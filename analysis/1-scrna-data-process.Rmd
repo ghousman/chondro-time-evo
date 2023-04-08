@@ -1,0 +1,1700 @@
+---
+title: "scrna-data-process"
+author: "Genevieve Housman"
+date: "October 2022"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# scRNA-seq Analyses - Data Processing with Cell Ranger
+
+batch 1
+
+* 10x 3' HT targeting 28K cells x 2 lanes (24.9K singlets x 2) = 49.8K singlets expected total
+* 12 CellPlex Tags used = 4150 singlets expected per tag
+* 4 cell lines with 6 time points each = 2075 singlets expected per tag
+
+batch 2
+
+* 10x 3' targeting 5K cells x 4 lanes (4.6K singlets x 4) = 18.4K singlets expected total
+* 6 CellPlex Tags used = 3066 singlets expected per tag
+* 4 cell lines with 3 time points each = 1533 singlets expected per tag
+
+
+## Run Cell Ranger multi + count to process data
+
+cellranger v7.0.0
+
+* multi - used to call CellPlex tags
+
+  + align reads to human genome with ortho exon annotation (cellranger.batch1.h.sh, cellranger.batch2.h.sh)
+  + align reads to chimp genome with ortho exon annotation (cellranger.batch1.c.sh, cellranger.batch2.c.sh)
+  + cannot align reads to human/chimp combined genome because there are duplicate contig sequences (no duplicate ids) 
+
+* count - used to call species assignments
+
+  + align reads to human/chimp combined genome with ortho exon annotation
+
+References:
+
+* https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/algorithms/cellplex
+* https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/using/multi
+* https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/using/tutorial_cp
+* https://kb.10xgenomics.com/hc/en-us/articles/4431902905229-How-to-troubleshoot-Cell-Ranger-count-Segmentation-Fault-Duplicate-contigs-
+* https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/using/count
+* https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/using/tutorial_ct
+
+
+```{bash, eval=FALSE}
+
+#process reads using human genome and ortho exon annotation
+cd /project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/scRNA
+sbatch ./../chondro-time-evo/code/cellranger.batch1.h.sh
+sbatch ./../chondro-time-evo/code/cellranger.batch2.h.sh
+
+#process reads using chimp genome and ortho exon annotation
+cd /project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/scRNA
+sbatch ./../chondro-time-evo/code/cellranger.batch1.c.sh
+sbatch ./../chondro-time-evo/code/cellranger.batch2.c.sh
+
+### NEED TO FIX STARTING HERE ###
+### SEGMENTATION FAULT - SAME ISSUE AS ABOVE ###
+### NEED TO FIX STARTING HERE ###
+
+#process reads using human/chimp combined genome and ortho exon annotation
+cd /project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/scRNA
+sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-01
+sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-02
+sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-03
+sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-04
+sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-05
+sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-06
+sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-07
+sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-08
+sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-09
+sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-10
+sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-11
+sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-12
+cd /project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/scRNA
+sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-01
+sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-02
+sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-03
+sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-04
+sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-05
+sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-06
+sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-07
+sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-08
+sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-09
+sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-10
+sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-11
+sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-12
+
+```
+
+
+## Examine multi output
+
+https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/output/cellplex
+
+assignment_confidence_table.csv
+A table that contains all information from the tag assignment algorithm for each cell-associated barcode, in CSV format. More details below.
+
+tag_calls_summary.csv
+A table that summarizes the multiplexing results, including the number of cells assigned no tag, one tag, and more than one tag, in CSV format. More details below.
+
+tag_calls_per_cell.csv
+For each cell-associated barcode assigned a tag, this table summarizes the tags assigned and the UMI counts per tag, in CSV format. More details below.
+
+barcode_sample_assignments.csv
+If barcode-sample-assignment was specified in the multi config CSV, a duplicate of the input barcode-sample assignment CSV file will be generated.
+
+NOTE: cellranger multi only calls a tag if the probability of assignment was greater than 90%
+
+Should also check different probability thresholds
+
+
+```{r}
+library(tidyverse)
+library(stringi)
+library(Seurat)
+library(Azimuth)
+library(SeuratData)
+library(patchwork)
+```
+
+```{r}
+cp_threshold_assignment <- function(data, threshold){
+  data %>% 
+    select(Row, Barcode) %>% 
+    full_join(  
+      data %>% 
+      pivot_longer(
+        cols = c(contains("CMO"), Multiplet, Blank),
+        names_to = "Tag",
+        values_to = "Probability"
+      ) %>% 
+      filter(Probability > threshold) %>% 
+      #filter(!Tag %in% c("Blank", "Multiplet")) %>% 
+      group_by(Barcode) %>% 
+      #summarise(Assigned_Tags = paste(Tag, collapse = "|")),
+      summarise(Assigned_Tags = paste(Tag, collapse = "|"), Assigned_Probability = Probability),
+      by = "Barcode"
+    ) %>% 
+    replace_na(list(Assigned_Tags = "Unassigned"))
+}
+```
+
+```{r}
+
+#batch 1 using human reference
+
+x <- read.csv("../scRNA/human_chimp_chondro_time_batch1_h/outs/multi/multiplexing_analysis/assignment_confidence_table.csv")
+#dim(x)
+#table(x$Assignment)
+count(x, Assignment)
+
+#hist(x$Assignment_Probability[x$Assignment=="Unassigned"])
+#hist(x$Assignment_Probability[x$Assignment=="CMO301"])
+
+x_2 <- cp_threshold_assignment(data=x, threshold=0.5)
+#dim(x_2)
+#table(x_2$Assigned_Tags)
+count(x_2, Assigned_Tags)
+
+#y <- read.csv("../human_chimp_chondro_time_batch1_h/outs/multi/multiplexing_analysis/tag_calls_summary.csv")
+#z <- read.csv("../human_chimp_chondro_time_batch1_h/outs/multi/multiplexing_analysis/tag_calls_per_cell.csv")
+
+barcode_assign_b1 <- merge(x[,c("Barcode","Assignment","Assignment_Probability")], x_2[,c(2:4)], by="Barcode")
+colnames(barcode_assign_b1)[2:5] <- c("HumanRef_0.9","HumanRef_0.9_AssignProb","HumanRef_0.5","HumanRef_0.5_AssignProb")
+
+```
+
+```{r}
+
+#batch 1 using chimp reference
+
+x <- read.csv("../scRNA/human_chimp_chondro_time_batch1_c/outs/multi/multiplexing_analysis/assignment_confidence_table.csv")
+count(x, Assignment)
+
+x_2 <- cp_threshold_assignment(data=x, threshold=0.5)
+count(x_2, Assigned_Tags)
+
+barcode_assign_b1 <- merge(barcode_assign_b1, x[,c("Barcode","Assignment","Assignment_Probability")], by="Barcode")
+barcode_assign_b1 <- merge(barcode_assign_b1, x_2[,c(2:4)], by="Barcode")
+colnames(barcode_assign_b1)[6:9] <- c("ChimpRef_0.9","ChimpRef_0.9_AssignProb","ChimpRef_0.5","ChimpRef_0.5_AssignProb")
+
+```
+
+```{r}
+
+#batch 2 using human reference
+
+x <- read.csv("../scRNA/human_chimp_chondro_time_batch2_h/outs/multi/multiplexing_analysis/assignment_confidence_table.csv")
+count(x, Assignment)
+
+x_2 <- cp_threshold_assignment(data=x, threshold=0.5)
+count(x_2, Assigned_Tags)
+
+barcode_assign_b2 <- merge(x[,c("Barcode","Assignment","Assignment_Probability")], x_2[,c(2:4)], by="Barcode")
+colnames(barcode_assign_b2)[2:5] <- c("HumanRef_0.9","HumanRef_0.9_AssignProb","HumanRef_0.5","HumanRef_0.5_AssignProb")
+
+```
+
+```{r}
+
+#batch 2 using chimp reference
+
+x <- read.csv("../scRNA/human_chimp_chondro_time_batch2_c/outs/multi/multiplexing_analysis/assignment_confidence_table.csv")
+count(x, Assignment)
+
+x_2 <- cp_threshold_assignment(data=x, threshold=0.5)
+count(x_2, Assigned_Tags)
+
+barcode_assign_b2 <- merge(barcode_assign_b2, x[,c("Barcode","Assignment","Assignment_Probability")], by="Barcode")
+barcode_assign_b2 <- merge(barcode_assign_b2, x_2[,c(2:4)], by="Barcode")
+colnames(barcode_assign_b2)[6:9] <- c("ChimpRef_0.9","ChimpRef_0.9_AssignProb","ChimpRef_0.5","ChimpRef_0.5_AssignProb")
+
+```
+
+```{r, eval=FALSE, echo=FALSE}
+
+#TEMPORARY COMPARISON OF DIFFERENT CELLRANGER RUNS
+
+y <- read.csv("../scRNA/human_chimp_chondro_time_batch1_c/outs/multi/multiplexing_analysis/assignment_confidence_table.csv")
+z <- read.csv("../human_chimp_chondro_time_batch1_c/outs/multi/multiplexing_analysis/assignment_confidence_table.csv")
+
+count(y, Assignment)
+count(z, Assignment)
+
+y_2 <- cp_threshold_assignment(data=y, threshold=0.5)
+z_2 <- cp_threshold_assignment(data=z, threshold=0.5)
+
+count(y_2, Assigned_Tags)
+count(z_2, Assigned_Tags)
+
+rm(y,y_2,z,z_2)
+
+#RESULTS - CMO assignment probabilities are the same
+
+```
+
+```{r}
+
+rm(x,x_2)
+
+#compare cellplex assigments using 0.9 threshold vs. 0.5 threshold
+
+table(ifelse(barcode_assign_b1$HumanRef_0.9==barcode_assign_b1$HumanRef_0.5, "match", "different"))
+table(ifelse(barcode_assign_b1$ChimpRef_0.9==barcode_assign_b1$ChimpRef_0.5, "match", "different"))
+
+table(ifelse(barcode_assign_b2$HumanRef_0.9==barcode_assign_b2$HumanRef_0.5, "match", "different"))
+table(ifelse(barcode_assign_b2$ChimpRef_0.9==barcode_assign_b2$ChimpRef_0.5, "match", "different"))
+
+#compare cellplex assigments using human reference vs. chimp reference
+
+table(ifelse(barcode_assign_b1$HumanRef_0.9==barcode_assign_b1$ChimpRef_0.9, "match", "different"))
+table(ifelse(barcode_assign_b1$HumanRef_0.5==barcode_assign_b1$ChimpRef_0.5, "match", "different"))
+
+table(ifelse(barcode_assign_b2$HumanRef_0.9==barcode_assign_b2$ChimpRef_0.9, "match", "different"))
+table(ifelse(barcode_assign_b2$HumanRef_0.5==barcode_assign_b2$ChimpRef_0.5, "match", "different"))
+
+```
+
+For now, go with cell counts using 0.5 threshold and human reference
+
+batch 1 = 31,562 (vs. 31,697)
+batch 2 =  7,241 (vs.  7,451)
+
+```{r}
+
+dim(barcode_assign_b1)
+count(barcode_assign_b1, HumanRef_0.5)
+count(barcode_assign_b1, ChimpRef_0.5)
+
+dim(barcode_assign_b2)
+count(barcode_assign_b2, HumanRef_0.5)
+count(barcode_assign_b2, ChimpRef_0.5)
+
+```
+
+## Make and save Seruat objects
+
+```{r}
+
+#batch 1
+
+#(1)load data
+raw_data <- Read10X(data="./../scRNA/human_chimp_chondro_time_batch1_h/outs/multi/count/raw_feature_bc_matrix")
+#raw_data <- Read10X(data="./../human_chimp_chondro_time_batch1_h/outs/multi/count/raw_feature_bc_matrix")
+
+#(2)create seurat objects
+data <- CreateSeuratObject(counts=raw_data$`Gene Expression`)
+
+#(3)view details of seurat objects
+data #19377 features, 2356630 samples
+
+#(4)add percent of mitochondrial reads to metadata
+#which(sapply(data@assays$RNA@counts@Dimnames[[1]], stri_count_regex, pattern="MT-")==1)
+#MT-CO2   16608
+#MT-CYB   16616
+#MT-ND2   16635
+#MT-ND5   16643
+#MT-CO1   16654
+#MT-ND3   16676
+#MT-ND4   16701
+#MT-ND1   16703
+#MT-ATP6  16709
+#MT-CO3   16732
+#MT-ND4L  17250
+#MT-ATP8  17689
+#INMT-MINDY4  18276 - not actually a mitochondrial gene
+mito <- c("MT-ATP6","MT-ATP8","MT-CO1","MT-CO2","MT-CO3","MT-CYB","MT-ND1","MT-ND2","MT-ND3","MT-ND4","MT-ND4L","MT-ND5")
+data$percent.mt <- PercentageFeatureSet(data, features=mito)
+
+saveRDS(data, file='./data/data-batch1-humanref.rds')
+
+rm(raw_data,data)
+
+```
+
+```{r}
+
+#batch 2
+
+#(1)load data
+raw_data <- Read10X(data="./../scRNA/human_chimp_chondro_time_batch2_h/outs/multi/count/raw_feature_bc_matrix")
+#raw_data <- Read10X(data="./../human_chimp_chondro_time_batch2_h/outs/multi/count/raw_feature_bc_matrix")
+
+#(2)create seurat objects
+data <- CreateSeuratObject(counts=raw_data$`Gene Expression`)
+
+#(3)view details of seurat objects
+data #19377 features, 1689884 samples
+
+#(4)add percent of mitochondrial reads to metadata
+mito <- c("MT-ATP6","MT-ATP8","MT-CO1","MT-CO2","MT-CO3","MT-CYB","MT-ND1","MT-ND2","MT-ND3","MT-ND4","MT-ND4L","MT-ND5")
+data$percent.mt <- PercentageFeatureSet(data, features=mito)
+
+saveRDS(data, file='./data/data-batch2-humanref.rds')
+
+rm(raw_data,data)
+
+```
+
+## Add metadata to Seurat objects and subset
+
+```{r}
+
+#batch 1
+
+data <- readRDS('./data/data-batch1-humanref.rds')
+
+#(5)add cellplex data to metadata
+m <- match(rownames(data@meta.data),barcode_assign_b1$Barcode)
+if(any(is.na(m))) cat("Not all barcodes are in data.\n")
+data <- AddMetaData(data, barcode_assign_b1[m,]$HumanRef_0.5, col.name="CellPlex_HumanRef_0.5")
+data <- AddMetaData(data, barcode_assign_b1[m,]$ChimpRef_0.5, col.name="CellPlex_ChimpRef_0.5")
+data <- AddMetaData(data, barcode_assign_b1[m,]$HumanRef_0.9, col.name="CellPlex_HumanRef_0.9")
+data <- AddMetaData(data, barcode_assign_b1[m,]$ChimpRef_0.9, col.name="CellPlex_ChimpRef_0.9")
+data <- AddMetaData(data, barcode_assign_b1[m,]$HumanRef_0.5_AssignProb, col.name="CellPlex_HumanRef_0.5_AssignProb")
+data <- AddMetaData(data, barcode_assign_b1[m,]$ChimpRef_0.5_AssignProb, col.name="CellPlex_ChimpRef_0.5_AssignProb")
+data <- AddMetaData(data, barcode_assign_b1[m,]$HumanRef_0.9_AssignProb, col.name="CellPlex_HumanRef_0.9_AssignProb")
+data <- AddMetaData(data, barcode_assign_b1[m,]$ChimpRef_0.9_AssignProb, col.name="CellPlex_ChimpRef_0.9_AssignProb")
+
+data_sub <- subset(data, subset=CellPlex_HumanRef_0.5!="NA")
+data_sub <- subset(data_sub, subset=CellPlex_HumanRef_0.5!="Unassigned")
+data_sub <- subset(data_sub, subset=CellPlex_HumanRef_0.5!="Multiplet")
+data_sub <- subset(data_sub, subset=CellPlex_HumanRef_0.5!="Blank")
+
+data_sub@meta.data$Time <- "NA"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO301")] <- "d00"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO302")] <- "d0"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO303")] <- "d7-m"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO304")] <- "d14-m"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO305")] <- "d7-c"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO306")] <- "d14-c"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO307")] <- "d00"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO308")] <- "d0"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO309")] <- "d7-m"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO310")] <- "d14-m"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO311")] <- "d7-c"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO312")] <- "d14-c"
+data_sub@meta.data$Time <- factor(data_sub@meta.data$Time, levels=c("d00","d0","d7-m","d14-m","d7-c","d14-c"))
+
+data_sub@meta.data$Sample <- "NA"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO301")] <- "H1+C1"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO302")] <- "H1+C1"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO303")] <- "H1+C1"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO304")] <- "H1+C1"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO305")] <- "H1+C1"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO306")] <- "H1+C1"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO307")] <- "H2+C4"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO308")] <- "H2+C4"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO309")] <- "H2+C4"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO310")] <- "H2+C4"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO311")] <- "H2+C4"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO312")] <- "H2+C4"
+
+data_sub@meta.data$SampleTime <- "NA"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO301")] <- "H1+C1_d00"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO302")] <- "H1+C1_d0"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO303")] <- "H1+C1_d7-m"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO304")] <- "H1+C1_d14-m"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO305")] <- "H1+C1_d7-c"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO306")] <- "H1+C1_d14-c"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO307")] <- "H2+C4_d00"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO308")] <- "H2+C4_d0"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO309")] <- "H2+C4_d7-m"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO310")] <- "H2+C4_d14-m"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO311")] <- "H2+C4_d7-c"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO312")] <- "H2+C4_d14-c"
+data_sub@meta.data$SampleTime <- factor(data_sub@meta.data$SampleTime,
+                                        levels=c("H1+C1_d00","H1+C1_d0","H1+C1_d7-m","H1+C1_d14-m","H1+C1_d7-c","H1+C1_d14-c",
+                                                 "H2+C4_d00","H2+C4_d0","H2+C4_d7-m","H2+C4_d14-m","H2+C4_d7-c","H2+C4_d14-c"))
+
+#(6)plot QC metrics
+VlnPlot(data_sub,
+        features=c("nFeature_RNA","nCount_RNA","percent.mt"),
+        group.by="CellPlex_HumanRef_0.5",
+        ncol=1,
+        pt.size=0,
+        #stack=TRUE
+        )
+median(data_sub@meta.data$nCount_RNA)   #osteo paper: median 16157 umi per cell
+median(data_sub@meta.data$nFeature_RNA) #osteo paper: median 3939 genes per cell
+
+saveRDS(data_sub, file='./data/data-batch1-humanref-cmo0.5thresh.rds')
+
+rm(data,data_sub)
+
+```
+
+```{r}
+
+#batch 2
+
+data <- readRDS('./data/data-batch2-humanref.rds')
+
+#(5)add cellplex data to metadata
+m <- match(rownames(data@meta.data),barcode_assign_b2$Barcode)
+if(any(is.na(m))) cat("Not all barcodes are in data.\n")
+data <- AddMetaData(data, barcode_assign_b2[m,]$HumanRef_0.5, col.name="CellPlex_HumanRef_0.5")
+data <- AddMetaData(data, barcode_assign_b2[m,]$ChimpRef_0.5, col.name="CellPlex_ChimpRef_0.5")
+data <- AddMetaData(data, barcode_assign_b2[m,]$HumanRef_0.9, col.name="CellPlex_HumanRef_0.9")
+data <- AddMetaData(data, barcode_assign_b2[m,]$ChimpRef_0.9, col.name="CellPlex_ChimpRef_0.9")
+data <- AddMetaData(data, barcode_assign_b2[m,]$HumanRef_0.5_AssignProb, col.name="CellPlex_HumanRef_0.5_AssignProb")
+data <- AddMetaData(data, barcode_assign_b2[m,]$ChimpRef_0.5_AssignProb, col.name="CellPlex_ChimpRef_0.5_AssignProb")
+data <- AddMetaData(data, barcode_assign_b2[m,]$HumanRef_0.9_AssignProb, col.name="CellPlex_HumanRef_0.9_AssignProb")
+data <- AddMetaData(data, barcode_assign_b2[m,]$ChimpRef_0.9_AssignProb, col.name="CellPlex_ChimpRef_0.9_AssignProb")
+
+data_sub <- subset(data, subset=CellPlex_HumanRef_0.5!="NA")
+data_sub <- subset(data_sub, subset=CellPlex_HumanRef_0.5!="Unassigned")
+data_sub <- subset(data_sub, subset=CellPlex_HumanRef_0.5!="Multiplet")
+data_sub <- subset(data_sub, subset=CellPlex_HumanRef_0.5!="Blank")
+
+data_sub@meta.data$Time <- "NA"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO301")] <- "d0"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO302")] <- "d7-c"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO303")] <- "d14-c"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO304")] <- "d0"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO305")] <- "d7-c"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO306")] <- "d14-c"
+
+data_sub@meta.data$Sample <- "NA"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO301")] <- "H5+C5"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO302")] <- "H5+C5"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO303")] <- "H5+C5"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO304")] <- "H3+C2"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO305")] <- "H3+C2"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO306")] <- "H3+C2"
+
+#(6)plot QC metrics
+VlnPlot(data_sub,
+        features=c("nFeature_RNA","nCount_RNA","percent.mt"),
+        group.by="CellPlex_HumanRef_0.5",
+        ncol=1,
+        pt.size=0)
+median(data_sub@meta.data$nCount_RNA)   #osteo paper: median 16157 umi per cell
+median(data_sub@meta.data$nFeature_RNA) #osteo paper: median 3939 genes per cell
+
+saveRDS(data_sub, file='./data/data-batch2-humanref-cmo0.5thresh.rds')
+
+rm(data,data_sub)
+
+```
+
+
+## Examine scRNA-seq data
+
+### Batch 1 independently - 2000 variable features
+
+```{r}
+
+#batch 1
+
+data_sub <- readRDS('./data/data-batch1-humanref-cmo0.5thresh.rds')
+
+#(7)normalize data
+data_sub <- NormalizeData(data_sub, normalization.method="LogNormalize", scale.factor=10000)
+
+#(8)find variable features
+data_sub <- FindVariableFeatures(data_sub, selection.method="vst", nfeatures=2000)
+LabelPoints(plot=VariableFeaturePlot(data_sub),
+            points=head(VariableFeatures(data_sub),10),
+            repel=TRUE)
+
+#(9)scale data
+data_sub <- ScaleData(data_sub, features=rownames(data_sub))
+
+#(10)pca
+data_sub <- RunPCA(data_sub,
+                   features=VariableFeatures(data_sub),
+                   npcs=100)
+
+VizDimLoadings(data_sub, dims=1:2, reduction="pca")
+DimPlot(data_sub, dims=1:2, reduction="pca")
+DimHeatmap(data_sub, dims=1, cells=500, balanced=TRUE)
+ElbowPlot(data_sub, ndims=100)
+
+#(11)unsupervised cell clustering
+data_sub <- FindNeighbors(data_sub, dims=1:30)
+data_sub <- FindClusters(data_sub, resolution=0.05)
+table(data_sub@meta.data$seurat_clusters)
+
+#(12)umap
+data_sub <- RunUMAP(data_sub, dims=1:30)
+#DimPlot(data_sub, reduction="umap", group.by="orig.ident")
+DimPlot(data_sub, reduction="umap", group.by="CellPlex_HumanRef_0.5")
+DimPlot(data_sub, reduction="umap", group.by="seurat_clusters")
+DimPlot(data_sub, reduction="umap", group.by="Sample")
+DimPlot(data_sub, reduction="umap", group.by="Time")
+DimPlot(data_sub, reduction="umap", group.by="Time", split.by="Sample")
+DimPlot(data_sub, reduction="umap", group.by="Time", split.by="Time")
+
+#(13)examine biomarkers
+VlnPlot(data_sub, features=c("COL2A1","SOX9","ACAN"), group.by="Time")
+FeaturePlot(data_sub, features=c("COL2A1","SOX9","ACAN"))
+
+Idents(data_sub) <- "Time"
+data.markers <- FindAllMarkers(data_sub, only.pos=TRUE, min.pct=0.25, logfc.threshold=0.25)
+data.markers %>%
+    group_by(cluster) %>%
+    slice_max(n=2, order_by=avg_log2FC)
+top10 <-
+  data.markers %>%
+    group_by(cluster) %>%
+    top_n(n=10, wt=avg_log2FC)
+DoHeatmap(data_sub, features=top10$gene) + NoLegend()
+
+#(14)examine other factors that could impact clustering
+FeaturePlot(data_sub, reduction="umap", features="CellPlex_HumanRef_0.5_AssignProb")
+FeaturePlot(data_sub, reduction="umap", features="CellPlex_HumanRef_0.5_AssignProb", split.by="Time")
+
+```
+
+### Batch 1 independently - 500 variable features
+
+```{r}
+
+#batch 1
+
+data_sub <- load('./data/data-batch1-humanref-cmo0.5thresh.rds')
+
+#(7)normalize data
+data_sub <- NormalizeData(data_sub, normalization.method="LogNormalize", scale.factor=10000)
+
+#(8)find variable features
+data_sub <- FindVariableFeatures(data_sub, selection.method="vst", nfeatures=500)
+LabelPoints(plot=VariableFeaturePlot(data_sub),
+            points=head(VariableFeatures(data_sub),10),
+            repel=TRUE)
+
+#(9)scale data
+data_sub <- ScaleData(data_sub, features=rownames(data_sub))
+
+#(10)pca
+data_sub <- RunPCA(data_sub,
+                   features=VariableFeatures(data_sub),
+                   npcs=100)
+
+VizDimLoadings(data_sub, dims=1:2, reduction="pca")
+DimPlot(data_sub, dims=1:2, reduction="pca")
+DimHeatmap(data_sub, dims=1, cells=500, balanced=TRUE)
+ElbowPlot(data_sub, ndims=100)
+
+#(11)unsupervised cell clustering
+data_sub <- FindNeighbors(data_sub, dims=1:30)
+data_sub <- FindClusters(data_sub, resolution=0.05)
+table(data_sub@meta.data$seurat_clusters)
+
+#(12)umap
+data_sub <- RunUMAP(data_sub, dims=1:30)
+#DimPlot(data_sub, reduction="umap", group.by="orig.ident")
+DimPlot(data_sub, reduction="umap", group.by="CellPlex_HumanRef_0.5")
+DimPlot(data_sub, reduction="umap", group.by="seurat_clusters")
+DimPlot(data_sub, reduction="umap", group.by="Sample")
+DimPlot(data_sub, reduction="umap", group.by="Time")
+DimPlot(data_sub, reduction="umap", group.by="Time", split.by="Sample")
+DimPlot(data_sub, reduction="umap", group.by="Time", split.by="Time")
+
+#(13)examine biomarkers
+VlnPlot(data_sub, features=c("COL2A1","SOX9","ACAN"), group.by="Time")
+FeaturePlot(data_sub, features=c("COL2A1","SOX9","ACAN"))
+
+Idents(data_sub) <- "Time"
+data.markers <- FindAllMarkers(data_sub, only.pos=TRUE, min.pct=0.25, logfc.threshold=0.25)
+data.markers %>%
+    group_by(cluster) %>%
+    slice_max(n=2, order_by=avg_log2FC)
+top10 <-
+  data.markers %>%
+    group_by(cluster) %>%
+    top_n(n=10, wt=avg_log2FC)
+DoHeatmap(data_sub, features=top10$gene) + NoLegend()
+
+#(14)examine other factors that could impact clustering
+FeaturePlot(data_sub, reduction="umap", features="CellPlex_HumanRef_0.5_AssignProb")
+FeaturePlot(data_sub, reduction="umap", features="CellPlex_HumanRef_0.5_AssignProb", split.by="Time")
+
+```
+
+### Batch 1 independently - all features
+
+```{r}
+
+#batch 1
+
+data_sub <- load('./data/data-batch1-humanref-cmo0.5thresh.rds')
+
+#(7)normalize data
+data_sub <- NormalizeData(data_sub, normalization.method="LogNormalize", scale.factor=10000)
+
+#(8)find variable features
+data_sub <- FindVariableFeatures(data_sub, selection.method="vst", nfeatures=2000)
+LabelPoints(plot=VariableFeaturePlot(data_sub),
+            points=head(VariableFeatures(data_sub),10),
+            repel=TRUE)
+
+#(9)scale data
+data_sub <- ScaleData(data_sub, features=rownames(data_sub))
+
+#(10)pca
+data_sub <- RunPCA(data_sub,
+                   features=rownames(data_sub),
+                   npcs=100)
+
+VizDimLoadings(data_sub, dims=1:2, reduction="pca")
+DimPlot(data_sub, dims=1:2, reduction="pca")
+DimHeatmap(data_sub, dims=1, cells=500, balanced=TRUE)
+ElbowPlot(data_sub, ndims=100)
+
+#(11)unsupervised cell clustering
+data_sub <- FindNeighbors(data_sub, dims=1:30)
+data_sub <- FindClusters(data_sub, resolution=0.05)
+table(data_sub@meta.data$seurat_clusters)
+
+#(12)umap
+data_sub <- RunUMAP(data_sub, dims=1:30)
+#DimPlot(data_sub, reduction="umap", group.by="orig.ident")
+DimPlot(data_sub, reduction="umap", group.by="CellPlex_HumanRef_0.5")
+DimPlot(data_sub, reduction="umap", group.by="seurat_clusters")
+DimPlot(data_sub, reduction="umap", group.by="Sample")
+DimPlot(data_sub, reduction="umap", group.by="Time")
+DimPlot(data_sub, reduction="umap", group.by="Time", split.by="Sample")
+DimPlot(data_sub, reduction="umap", group.by="Time", split.by="Time")
+
+#(13)examine biomarkers
+VlnPlot(data_sub, features=c("COL2A1","SOX9","ACAN"), group.by="Time")
+FeaturePlot(data_sub, features=c("COL2A1","SOX9","ACAN"))
+
+Idents(data_sub) <- "Time"
+data.markers <- FindAllMarkers(data_sub, only.pos=TRUE, min.pct=0.25, logfc.threshold=0.25)
+data.markers %>%
+    group_by(cluster) %>%
+    slice_max(n=2, order_by=avg_log2FC)
+top10 <-
+  data.markers %>%
+    group_by(cluster) %>%
+    top_n(n=10, wt=avg_log2FC)
+DoHeatmap(data_sub, features=top10$gene) + NoLegend()
+
+#(14)examine other factors that could impact clustering
+FeaturePlot(data_sub, reduction="umap", features="CellPlex_HumanRef_0.5_AssignProb")
+FeaturePlot(data_sub, reduction="umap", features="CellPlex_HumanRef_0.5_AssignProb", split.by="Time")
+
+```
+
+
+
+### Batch 2 independently - 2000 variable features
+
+```{r}
+
+#batch 2
+
+data_sub <- load('./data/data-batch2-humanref-cmo0.5thresh.rds')
+
+#(7)normalize data
+data_sub <- NormalizeData(data_sub, normalization.method="LogNormalize", scale.factor=10000)
+
+#(8)find variable features
+data_sub <- FindVariableFeatures(data_sub, selection.method="vst", nfeatures=2000)
+LabelPoints(plot=VariableFeaturePlot(data_sub),
+            points=head(VariableFeatures(data_sub),10),
+            repel=TRUE)
+
+#(9)scale data
+data_sub <- ScaleData(data_sub, features=rownames(data_sub))
+
+#(10)pca
+data_sub <- RunPCA(data_sub,
+                   #features=VariableFeatures(data_sub),
+                   features=rownames(data_sub),
+                   npcs=50)
+
+VizDimLoadings(data_sub, dims=1:2, reduction="pca")
+DimPlot(data_sub, dims=1:2, reduction="pca")
+DimHeatmap(data_sub, dims=1, cells=500, balanced=TRUE)
+ElbowPlot(data_sub, ndims=50)
+
+#(11)unsupervised cell clustering
+data_sub <- FindNeighbors(data_sub, dims=1:50)
+data_sub <- FindClusters(data_sub, resolution=0.05)
+table(data_sub@meta.data$seurat_clusters)
+
+#(12)umap
+data_sub <- RunUMAP(data_sub, dims=1:50)
+DimPlot(data_sub, reduction="umap", group.by="CellPlex_HumanRef_0.5")
+DimPlot(data_sub, reduction="umap", group.by="seurat_clusters")
+DimPlot(data_sub, reduction="umap", group.by="Sample")
+DimPlot(data_sub, reduction="umap", group.by="Time")
+
+#(13)examine biomarkers
+VlnPlot(data_sub, features=c("COL2A1","SOX9","ACAN"), group.by="Time")
+FeaturePlot(data_sub, features=c("COL2A1","SOX9","ACAN"))
+
+Idents(data_sub) <- "Time"
+data.markers <- FindAllMarkers(data_sub, only.pos=TRUE, min.pct=0.25, logfc.threshold=0.25)
+data.markers %>%
+    group_by(cluster) %>%
+    slice_max(n=2, order_by=avg_log2FC)
+top10 <-
+  data.markers %>%
+    group_by(cluster) %>%
+    top_n(n=10, wt=avg_log2FC)
+DoHeatmap(data_sub, features=top10$gene) + NoLegend()
+
+```
+
+
+
+
+
+***UPDATE FROM HERE***
+
+Data being examined comes from 4 humans and 4 chimpanzees.
+
+[[[ fill in information ]]]
+
+For downstream analysis of 10X data, we need to:
+
+* process fastq files into count matrices
+* process count matrices for use in R
+
+### Process fastq files
+
+Fastq files were processed into count matrices (genes x cells) using cellranger 3.1.0.
+
+Three different cellranger references were made using the hg38 and panTro6 genomes and ortho-exon v2 annotation (completed by KB):
+
+1. human_genome_index: /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2
+2. chimp_genome_index: /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2
+3. combined_genome_index: /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2
+
+Count matrices were made using each of the three different cellranger references (compeleted by GH):
+
+1. Reads were processed using human_genome_index.
+2. Reads were processed using chimp_genome_index.
+3. Reads were processed using combined_genome_index.
+
+We found that cellranger is really bad at human/chimp assignments [see 10x-data-0-process-test]. Thus, we take the cellranger cell assignment output when using combined_genome_index, and instead assign cells based on the ratio of resulting human-aligned UMIs per cells vs. the total number of aligned UMIs per cells. We use a cutoff ratio <= 0.1 to assign chimpanzee cells and a cutoff ratio >= 0.9 to assign human cells.
+
+Notes on what cellranger does to compute count matrices:
+
+* genome alignment
+	 + aligner (STAR) peforms splicing-aware alignment of reads to genome
+	 + transcript annotation (GTF) buckets reads into exonic/intronic/intergenic and whether reads align (confidently) to genome
+	 + [read = exonic if >=50% of it intersects an exon]
+	 + [read = intronic if it is non-exonic and intersects an intron]
+	 + [read = intergenic in all other cases]
+* MAPQ adjustment (MAPQ 255)
+   + for reads that align to a single exonic locus and to 1+ non-exonic loci, the exonic locus is prioritized and read is considered to be confidently mapped to exonic locus
+* transcriptome alignment
+	 + aligns exonic reads to annotated transcripts and looks for compatibility
+	 + read is mapped to transcriptome if: read that is compatible with exons of annotated transcript and aligned to same strand
+	 + read is uniquely (confidently) mapped to transcriptome if: read is compatible with a single gene annotation
+	 + [uniquely (confidently) mapped reads are only ones considered for UMI counting]
+* UMI counting
+	 + before counting UMIs, corrections for sequencing errors in UMI sequences are attempted
+	 + reads confidently mapped to transcriptome are grouped according to shared barcodes, UMIs, and gene annotations
+	 + filter 1: if two groups of reads have same barcode and gene, but UMIs differ by a single base (Hamming distance 1 apart), then one UMI was likely introduced by substitution error in sequencing, and UMI of less-supported read group is corrected to UMI with higher support
+	 + reads confidently mapped to transcriptome are grouped according to shared barcodes, UMIs (possibly corrected), and gene annotations
+	 + filter 2: if two or more groups of reads have same barcode and UMI, but different gene annotations, gene annotation with most supporting reads is kept for UMI counting and other read groups are discarded (ties for maximal read support: all read groups are discarded as gene cannot be confidently assigned)
+	 + each observed barcode-UMI-gene combination is recorded as UMI count in unfiltered feature-barcode matrix (number of reads supporting each counted UMI also recorded in molecule info file)
+* calling cell barcodes
+	 + [improved cell-calling algorithm that better identifies populations of low RNA content cells, especially when low RNA content cells are mixed into population of high RNA content cells, based on EmptyDrops method by Lun et al. 2018]
+	 + step 1:
+		  - uses cutoff based on total UMI counts of each barcode to identify cells - identifies primary mode of high RNA content cells
+		  - (takes as input expected number of recovered cells, N)
+		  - (let m be 99th percentile of top N barcodes by total UMI counts)
+		  - (all barcodes whose total UMI counts exceed m/10 are called as cells)
+	 + step 2:
+		  - uses RNA profile of each remaining barcode to determine if it is "empty" or cell containing partition - captures low RNA content cells whose total UMI counts may be similar to empty GEMs
+		  - (creates background model of RNA profiles from selected barcodes - multinomial distribution over genes - using Simple Good-Turing smoothing to provide a non-zero model estimate for genes not observed in representative empty GEM set)
+		  - (RNA profile of each barcode not called as cell in step 1 is compared to background model)
+		  - (barcodes whose RNA profile strongly disagrees with background model are added to set of positive cell calls)
+		  - (to remedy cases in which set of barcodes called as cells does not match desired set of barcodes based on visual inspection: re-run count/reanalyze with --force-cells option, select desired barcodes from raw feature-barcode matrix in downstream analysis, or select custom barcodes in reanalyze using --barcodes)
+* estimating multiplet rates
+	 + cell-associated barcodes are classified as species1 or species2 based on which genome has more total UMI counts for that barcode
+	 + cell-associated barcodes with total UMI counts that exceed the 10th percentile of the distributions for both species1 and species2 are classified as multiplets
+	 + computes inferred multiplet rate by estimating the total number of multiplets (including (species1, species1) and (species2, species2))
+		  - estimates via ML the total number of multiplet GEMs from the observed multiplets and the inferred ratio of species1 to species2 cells
+		  - if ratio is 1:1, the inferred multiplet rate is approximately twice the observed (species1, species2) multiplets
+
+```{bash, eval=FALSE, echo=TRUE}
+#process reads using human_genome_index
+cd /project2/gilad/ghousman/skeletal-human-chimp/scRNA/cellranger-data-full/cellranger-data-HumanOrthoV2
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh GHO-1 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190621_K00242_0576_AH7G3JBBXY_YG-GH-10X-4S-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190626_K00242_0578_AH77TNBBXY_YG-GH-10X-4S-ln2,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190726_K00242_0593_BH77N2BBXY_YG-GH-10X-4S-xtra-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190730_K00242_0594_BH7N3HBBXY_YG-GH-10X-4S-xtra-ln2
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh GHO-2 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190621_K00242_0576_AH7G3JBBXY_YG-GH-10X-4S-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190626_K00242_0578_AH77TNBBXY_YG-GH-10X-4S-ln2,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190726_K00242_0593_BH77N2BBXY_YG-GH-10X-4S-xtra-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190730_K00242_0594_BH7N3HBBXY_YG-GH-10X-4S-xtra-ln2
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh GHO-3 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190621_K00242_0576_AH7G3JBBXY_YG-GH-10X-4S-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190626_K00242_0578_AH77TNBBXY_YG-GH-10X-4S-ln2,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190726_K00242_0593_BH77N2BBXY_YG-GH-10X-4S-xtra-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190730_K00242_0594_BH7N3HBBXY_YG-GH-10X-4S-xtra-ln2
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh GHO-4 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190621_K00242_0576_AH7G3JBBXY_YG-GH-10X-4S-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190626_K00242_0578_AH77TNBBXY_YG-GH-10X-4S-ln2,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190726_K00242_0593_BH77N2BBXY_YG-GH-10X-4S-xtra-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190730_K00242_0594_BH7N3HBBXY_YG-GH-10X-4S-xtra-ln2
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-1 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-2 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-4 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-5 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-6 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-8 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-9 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-10 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-11 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-12 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-15 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-16 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-17 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-18 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-19 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-20 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-21 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-22 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+
+#process reads using chimp_genome_index
+cd /project2/gilad/ghousman/skeletal-human-chimp/scRNA/cellranger-data-full/cellranger-data-ChimpOrthoV2
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh GHO-1 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190621_K00242_0576_AH7G3JBBXY_YG-GH-10X-4S-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190626_K00242_0578_AH77TNBBXY_YG-GH-10X-4S-ln2,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190726_K00242_0593_BH77N2BBXY_YG-GH-10X-4S-xtra-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190730_K00242_0594_BH7N3HBBXY_YG-GH-10X-4S-xtra-ln2
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh GHO-2 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190621_K00242_0576_AH7G3JBBXY_YG-GH-10X-4S-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190626_K00242_0578_AH77TNBBXY_YG-GH-10X-4S-ln2,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190726_K00242_0593_BH77N2BBXY_YG-GH-10X-4S-xtra-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190730_K00242_0594_BH7N3HBBXY_YG-GH-10X-4S-xtra-ln2
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh GHO-3 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190621_K00242_0576_AH7G3JBBXY_YG-GH-10X-4S-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190626_K00242_0578_AH77TNBBXY_YG-GH-10X-4S-ln2,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190726_K00242_0593_BH77N2BBXY_YG-GH-10X-4S-xtra-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190730_K00242_0594_BH7N3HBBXY_YG-GH-10X-4S-xtra-ln2
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh GHO-4 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190621_K00242_0576_AH7G3JBBXY_YG-GH-10X-4S-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190626_K00242_0578_AH77TNBBXY_YG-GH-10X-4S-ln2,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190726_K00242_0593_BH77N2BBXY_YG-GH-10X-4S-xtra-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190730_K00242_0594_BH7N3HBBXY_YG-GH-10X-4S-xtra-ln2
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-1 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-2 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-4 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-5 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-6 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-8 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-9 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-10 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-11 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-12 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-15 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-16 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-17 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-18 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-19 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-20 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-21 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count.sh HOU-22 /project2/gilad/kenneth/References/HumanChimpCellranger/ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+
+#process reads using combined_genome_index
+cd /project2/gilad/ghousman/skeletal-human-chimp/scRNA/cellranger-data-full/cellranger-data-HumanOrthoV2_and_ChimpOrthoV2
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh GHO-1 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190621_K00242_0576_AH7G3JBBXY_YG-GH-10X-4S-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190626_K00242_0578_AH77TNBBXY_YG-GH-10X-4S-ln2,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190726_K00242_0593_BH77N2BBXY_YG-GH-10X-4S-xtra-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190730_K00242_0594_BH7N3HBBXY_YG-GH-10X-4S-xtra-ln2
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh GHO-2 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190621_K00242_0576_AH7G3JBBXY_YG-GH-10X-4S-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190626_K00242_0578_AH77TNBBXY_YG-GH-10X-4S-ln2,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190726_K00242_0593_BH77N2BBXY_YG-GH-10X-4S-xtra-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190730_K00242_0594_BH7N3HBBXY_YG-GH-10X-4S-xtra-ln2
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh GHO-3 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190621_K00242_0576_AH7G3JBBXY_YG-GH-10X-4S-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190626_K00242_0578_AH77TNBBXY_YG-GH-10X-4S-ln2,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190726_K00242_0593_BH77N2BBXY_YG-GH-10X-4S-xtra-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190730_K00242_0594_BH7N3HBBXY_YG-GH-10X-4S-xtra-ln2
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh GHO-4 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190621_K00242_0576_AH7G3JBBXY_YG-GH-10X-4S-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190626_K00242_0578_AH77TNBBXY_YG-GH-10X-4S-ln2,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190726_K00242_0593_BH77N2BBXY_YG-GH-10X-4S-xtra-ln1,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/190730_K00242_0594_BH7N3HBBXY_YG-GH-10X-4S-xtra-ln2
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-1 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-2 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-4 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-5 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-6 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-8 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-9 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-10 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-11 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-12 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-15 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-16 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-17 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-18 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-19 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-20 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-21 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+sbatch ./../../../human-chimp-skeletal-scRNA/code/submit-cellranger-count-multispp.sh HOU-22 /project2/gilad/kenneth/References/HumanChimpCellranger/HumanOrthoV2_and_ChimpOrthoV2 /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7,/project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7
+```
+
+### Processing count matrices
+
+Compile 10X data using seurat.
+
+Each dataset being evaluated comprises gene count data that were seperately calculated using both the hg38 human genome and the panTro6 chimpanzee genome, as well as the corresponding ortho-exon annotation in cellranger. Species-specific assignments were determined using human-chimpanzee genome combination with ortho-exon annotation.
+
+```{bash, eval=FALSE, echo=TRUE}
+#easties to run these scripts on the cluster
+cd /project2/gilad/ghousman/skeletal-human-chimp/human-chimp-skeletal-scRNA
+sinteractive --mem=24g --time=12:00:00 --partition=broadwl
+module load R/3.6.1
+R
+```
+
+```{r load libraries, eval=FALSE, echo=TRUE}
+
+library(Seurat)
+library(dplyr)
+library(stringi)
+library(stringr)
+library(ggplot2)
+library(colorspace)
+library(RColorBrewer)
+
+```
+
+```{r load batch information, eval=FALSE, echo=TRUE}
+
+#Load batch info
+batch <- read.csv(file='./data/scrna-batch.csv', header=TRUE, sep=",")
+
+#batch <- as.data.frame(t(c("1-C","1","Chondrocyte","GHO-3","H1-C","H23555","M",22,"C1-C","C8861","M",16)))
+#colnames(batch) <- c("Pooled_Sample_Name","Batch","Cell_Type","Sample_Name_at_Core",
+#                     "Human_Sample_in_Pool","Human_Individual_in_Pool","Human_Sex_in_Pool","Human_Age_in_Pool",
+#                     "Chimp_Sample_in_Pool","Chimp_Individual_in_Pool","Chimp_Sex_in_Pool","Chimp_Age_in_Pool")
+
+```
+
+```{r assess species assignments, eval=FALSE, echo=TRUE}
+
+#Load species assignments
+spp <- data.frame()
+i <- 1
+while (i <= length(batch$Sample_Name_at_Core)) {
+  
+  print(i)
+  
+  #Define directory containing data from one collection
+  dir_data <- paste0('./../scRNA/cellranger-data-full/cellranger-data-HumanOrthoV2_and_ChimpOrthoV2/',batch$Sample_Name_at_Core[i],'/outs/analysis/')
+  #dir_data <- paste0('./../scRNA/cellranger-data-full/cellranger-data-HumanOrthoV2_and_ChimpOrthoV2/GHO-3/outs/analysis/')
+  
+  #Load summary metrics from one collection
+  temp <- read.csv(file=paste0(dir_data,'gem_classification.csv'))
+  
+  #Process cellranger metrics
+  temp$barcode <- sapply(temp$barcode, gsub, pattern="-1", replacement="")
+  temp$call <- sapply(temp$call, gsub, pattern="HumanOrthoV2", replacement="Human")
+  temp$call <- sapply(temp$call, gsub, pattern="ChimpOrthoV2", replacement="Chimp")
+  temp$Collection.Name <- batch$Sample_Name_at_Core[i]
+  
+  #Determine new species assignments
+
+  #calculate total number of umis
+  temp$TotalOrthoV2 <- temp$HumanOrthoV2 + temp$ChimpOrthoV2
+  
+  #calculate ratio of human umis to total umis
+  temp$RatioOrthoV2 <- temp$HumanOrthoV2 / temp$TotalOrthoV2
+  
+  #define RatioOrthoV2 cutoffs
+  c_cutoff <- 0.1
+  h_cutoff <- 0.9
+  
+  #assign new human/chimp cells
+  temp$NEWcall <- "Multiplet"
+  temp$NEWcall[which(temp$RatioOrthoV2>=h_cutoff)] <- "Human"
+  temp$NEWcall[which(temp$RatioOrthoV2<=c_cutoff)] <- "Chimp"
+  
+  #Save revised csv
+  write.csv(temp,file=paste0('./../scRNA/cellranger-data-full/cellranger-data-HumanOrthoV2_and_ChimpOrthoV2/',batch$Sample_Name_at_Core[i],'/outs/analysis/gem_classification_GHedit.csv'))
+  #write.csv(temp,file=paste0('./../scRNA/cellranger-data-full/cellranger-data-HumanOrthoV2_and_ChimpOrthoV2/GHO-3/outs/analysis/gem_classification_GHedit.csv'))
+
+  #Add data to dataframe
+  spp <- rbind(spp,temp)
+  i <- i+1
+}
+rm(dir_data,temp)
+
+```
+
+```{r process scRNA data - isolate human and chimp cells, eval=FALSE, echo=TRUE}
+
+#Isolate human and chimp cells for each collection
+i <- 1
+while (i <= length(batch$Sample_Name_at_Core)) {
+
+  print(paste0("Processing ",batch$Sample_Name_at_Core[i]))
+  
+  #(0)define directory
+    dir_h.data <- paste0('./../scRNA/cellranger-data-full/cellranger-data-HumanOrthoV2/',batch$Sample_Name_at_Core[i],'/outs')
+    dir_c.data <- paste0('./../scRNA/cellranger-data-full/cellranger-data-ChimpOrthoV2/',batch$Sample_Name_at_Core[i],'/outs')
+    
+  #(1)load data
+    h.data <- Read10X(data=paste0(dir_h.data,"/raw_feature_bc_matrix"))
+    c.data <- Read10X(data=paste0(dir_c.data,"/raw_feature_bc_matrix"))
+    
+  #(2)create seurat objects
+    h.dat <- CreateSeuratObject(counts=h.data)
+    c.dat <- CreateSeuratObject(counts=c.data)
+    
+  #(3)view details of seurat objects
+    h.dat #19399 features, 6794880 samples
+    c.dat #19399 features, 6794880 samples
+    
+  #(4)clear raw data from workspace
+    rm(h.data,c.data)
+  
+  #(5)add species assignments to data
+    dir_data <- paste0('./../scRNA/cellranger-data-full/cellranger-data-HumanOrthoV2_and_ChimpOrthoV2/',batch$Sample_Name_at_Core[i],'/outs/analysis/')
+
+    #Load summary metrics
+    temp <- read.csv(file=paste0(dir_data,'gem_classification_GHedit.csv'))
+
+    m <- match(rownames(h.dat@meta.data),temp$barcode)
+    if(any(is.na(m))) cat("Not all barcodes are in data.\n")
+    h.dat <- AddMetaData(h.dat, temp[m,]$NEWcall, col.name="Species")
+  
+    m <- match(rownames(c.dat@meta.data),temp$barcode)
+    if(any(is.na(m))) cat("Not all barcodes are in data.\n")
+    c.dat <- AddMetaData(c.dat, temp[m,]$NEWcall, col.name="Species")
+
+  #(6)view details of species assignments
+    table(h.dat@meta.data$Species, useNA="always")
+    table(c.dat@meta.data$Species, useNA="always")
+  
+  #(7)subset data to only include human and chimp cells/genes
+    h.dat.spp <- subset(h.dat, subset=Species=="Human")
+    c.dat.spp <- subset(c.dat, subset=Species=="Chimp")
+ 
+  #(8)create merged object
+    h.c.dat.spp <- merge(h.dat.spp,c.dat.spp)
+    saveRDS(h.c.dat.spp, file=paste0('./data/cellranger-data-full/h.c.dat.spp.',batch$Sample_Name_at_Core[i],'.rds'))
+
+  #(9)remove unnecessary variables
+    rm(h.dat,c.dat,h.dat.spp,c.dat.spp)
+    rm(dir_h.data,dir_c.data)
+
+  i <- i+1
+  
+}
+
+```
+
+Add metadata to count matrices.
+
+```{r process scRNA data - add mitochondrial metadata, eval=FALSE, echo=TRUE}
+
+#Read in files
+data <- list()
+for (i in 1:length(batch$Sample_Name_at_Core)) {
+  print(i)
+  data[[i]] <- readRDS(paste0("./data/cellranger-data-full/h.c.dat.spp.",batch$Sample_Name_at_Core[i],".rds"))
+}
+
+#Identify mitochondrial genes (should be 12 genes total) and add percent of mitochondrial reads vs. total reads
+#which(sapply(data[[i]]@assays$RNA@counts@Dimnames[[1]], stri_count_regex, pattern="MT-")==1)
+#MT-CO2   16608
+#MT-CYB   16616
+#MT-ND2   16635
+#MT-ND5   16643
+#MT-CO1   16654
+#MT-ND3   16676
+#MT-ND4   16701
+#MT-ND1   16703
+#MT-ATP6  16709
+#MT-CO3   16732
+#MT-ND4L  17250
+#MT-ATP8  17689
+#INMT-MINDY4  18276 - not actually a mitochondrial gene
+mito <- c("MT-ATP6","MT-ATP8","MT-CO1","MT-CO2","MT-CO3","MT-CYB","MT-ND1","MT-ND2","MT-ND3","MT-ND4","MT-ND4L","MT-ND5")
+for (i in 1:length(data)) { data[[i]]$percent.mt <- PercentageFeatureSet(data[[i]], features=mito) }
+
+```
+
+```{r load files with other relevant metadata, eval=FALSE, echo=TRUE}
+
+#Load batch data
+batch <- read.csv(file='./data/scrna-batch-reformat.csv', header=TRUE, sep=",")
+batch[,c(1:7,9:10,21,24:25)] <- lapply(batch[,c(1:7,9:10,21,24:25)], function(x) as.character(x)) #names, sex, dates
+batch[,c(8,11:20,22:23,25:26)] <- lapply(batch[,c(8,11:20,22:23,25:26)], function(x) as.numeric(as.character(x))) #numeric values only
+
+#Load FACS validation data
+fcs <- read.csv(file='./data/facs-MSC-collection-summary-total.csv', header=TRUE, sep=",")
+fcs <- fcs[,c(2,6,29,31,33,35)]
+fcs$Sample_Details <- factor(fcs$Sample_Details,
+                             levels=c("iPSC - control","iPSC - cocktail","MSC - cocktail"),
+                             labels=c("iPSCcontrol","iPSCcocktail","MSCcocktail"))
+fcs <- split(fcs, fcs$Sample_Details)
+fcs$iPSCcontrol$Abbr_Details <- factor(fcs$iPSCcontrol$Abbr_Details,
+                                       levels=c("C1 iPSC - control",
+                                                "C1-r2 iPSC - control",
+                                                "C2 iPSC - control",
+                                                "C3 iPSC - control",
+                                                "C4 iPSC - control",
+                                                "C5 iPSC - control",
+                                                "C6 iPSC - control",
+                                                "H1 iPSC - control",
+                                                "H1-r2 iPSC - control",
+                                                "H2 iPSC - control",
+                                                "H3 iPSC - control",
+                                                "H4 iPSC - control",
+                                                "H5 iPSC - control",
+                                                "H6 iPSC - control"),
+                                       labels=c("C1-I","C1-I-r2","C2-I","C3-I","C4-I","C5-I","C6-I",
+                                                "H1-I","H1-I-r2","H2-I","H3-I","H4-I","H5-I","H6-I"))
+fcs$iPSCcocktail$Abbr_Details <- factor(fcs$iPSCcocktail$Abbr_Details,
+                                        levels=c("C1 iPSC - cocktail",
+                                                 "C1-r2 iPSC - cocktail",
+                                                 "C2 iPSC - cocktail",
+                                                 "C3 iPSC - cocktail",
+                                                 "C4 iPSC - cocktail",
+                                                 "C5 iPSC - cocktail",
+                                                 "C6 iPSC - cocktail",
+                                                 "H1 iPSC - cocktail",
+                                                 "H1-r2 iPSC - cocktail",
+                                                 "H2 iPSC - cocktail",
+                                                 "H3 iPSC - cocktail",
+                                                 "H4 iPSC - cocktail",
+                                                 "H5 iPSC - cocktail",
+                                                 "H6 iPSC - cocktail"),
+                                       labels=c("C1-I","C1-I-r2","C2-I","C3-I","C4-I","C5-I","C6-I",
+                                                "H1-I","H1-I-r2","H2-I","H3-I","H4-I","H5-I","H6-I"))
+fcs$MSCcocktail$Abbr_Details <- factor(fcs$MSCcocktail$Abbr_Details,
+                                       levels=c("C1 MSC - cocktail",
+                                                "C1-r2 MSC - cocktail",
+                                                "C2 MSC - cocktail",
+                                                "C3 MSC - cocktail",
+                                                "C4 MSC - cocktail",
+                                                "C5 MSC - cocktail",
+                                                "C6 MSC - cocktail",
+                                                "H1 MSC - cocktail",
+                                                "H1-r2 MSC - cocktail",
+                                                "H2 MSC - cocktail",
+                                                "H3 MSC - cocktail",
+                                                "H4 MSC - cocktail",
+                                                "H5 MSC - cocktail",
+                                                "H6 MSC - cocktail"),
+                                       labels=c("C1-M","C1-M-r2","C2-M","C3-M","C4-M","C5-M","C6-M",
+                                                "H1-M","H1-M-r2","H2-M","H3-M","H4-M","H5-M","H6-M"))
+fcs.ctrl <- aggregate(. ~ Abbr_Details, fcs$iPSCcontrol, mean) #calculate averages
+fcs.ipsc <- aggregate(. ~ Abbr_Details, fcs$iPSCcocktail, mean) #calculate averages
+fcs.msc  <- aggregate(. ~ Abbr_Details, fcs$MSCcocktail, mean) #calculate averages
+fcs.ctrl$Abbr_Details <- as.character(fcs.ctrl$Abbr_Details)
+fcs.ipsc$Abbr_Details <- as.character(fcs.ipsc$Abbr_Details)
+fcs.msc$Abbr_Details <- as.character(fcs.msc$Abbr_Details)
+rm(fcs)
+
+#Load Alizarin Red data
+alz <- read.csv(file='./data/alizarin-red-quant-total.csv', header=TRUE, sep=",")
+alz <- alz[c(1:8,13:20,25:60,65:72,77:140),] #remove C1-6W, H1-6W, H3-1A
+alz <- alz[c(1:8,10:11,14:18,20:124),] #remove outliers
+alz$Sample <- factor(alz$Sample, 
+                     levels = c("C1-M","C1-O 12w",
+                                "CR-M","CR-O",
+                                "C2-M","C2-O",
+                                "C3-M","C3-O",
+                                "C4-M","C4-O",
+                                "C5-M","C5-O",
+                                "C6-M","C6-O",
+                                "H1-M","H1-O 12w",
+                                "HR-M","HR-O",
+                                "H2-M","H2-O",
+                                "H3-M(1)","H3-O(1)",
+                                "H4-M","H4-O",
+                                "H5-M","H5-O",
+                                "H6-M","H6-O"),
+                     labels = c("C1-M","C1-O",
+                                "C1-M-r2","C1-O-r2",
+                                "C2-M","C2-O",
+                                "C3-M","C3-O",
+                                "C4-M","C4-O",
+                                "C5-M","C5-O",
+                                "C6-M","C6-O",
+                                "H1-M","H1-O",
+                                "H1-M-r2","H1-O-r2",
+                                "H2-M","H2-O","
+                                H3-M","H3-O",
+                                "H4-M","H4-O",
+                                "H5-M","H5-O",
+                                "H6-M","H6-O")) 
+alz <- aggregate(Absorbance_Value ~ Sample, alz, mean) #calculate averages
+alz$Sample <- as.character(alz$Sample)
+
+#Load Oil Red data
+oil <- read.csv(file='./data/oil-red-quant-total.csv', header=TRUE, sep=",")
+oil <- oil[c(1:63,65:91,93:112),] #remove outliers
+oil$Sample <- factor(oil$Sample, 
+                     levels = c("C1-M","C1-A",
+                                "CR-M","CR-A",
+                                "C2-M","C2-A",
+                                "C3-M","C3-A",
+                                "C4-M","C4-A",
+                                "C5-M","C5-A",
+                                "C6-M","C6-A",
+                                "H1-M","H1-A",
+                                "HR-M","HR-A",
+                                "H2-M","H2-A",
+                                "H3-M","H3-A",
+                                "H4-M","H4-A",
+                                "H5-M","H5-A",
+                                "H6-M","H6-A"),
+                     labels = c("C1-M","C1-O",
+                                "C1-M-r2","C1-O-r2",
+                                "C2-M","C2-O",
+                                "C3-M","C3-O",
+                                "C4-M","C4-O",
+                                "C5-M","C5-O",
+                                "C6-M","C6-O",
+                                "H1-M","H1-O",
+                                "H1-M-r2","H1-O-r2",
+                                "H2-M","H2-O",
+                                "H3-M","H3-O",
+                                "H4-M","H4-O",
+                                "H5-M","H5-O",
+                                "H6-M","H6-O")) 
+oil <- aggregate(Absorbance_Value ~ Sample, oil, mean) #calculate averages
+oil$Sample <- as.character(oil$Sample)
+
+```
+
+```{r process scRNA data - add other relevant metadata, eval=FALSE, echo=TRUE}
+
+#Add additional details to list
+
+#collection
+for (i in 1:length(data)) { data[[i]]$Collection <- i }
+
+#cell type anticipated based on stage of differentiation at collection
+for (i in c(1,4,7,10,13,16,19)) { data[[i]]$Cell.Type <- "iPSC" }
+for (i in c(2,5,8,11,14,17,20)) { data[[i]]$Cell.Type <- "MSC" }
+for (i in c(3,6,9,12,15,18,21)) { data[[i]]$Cell.Type <- "Osteogenic" }
+
+#individuals pooled together in collection
+for (i in 1:6) { data[[i]]$Pair <- "H1+C1" }
+for (i in 7:9) { data[[i]]$Pair <- "H2+C2" }
+for (i in 10:12) { data[[i]]$Pair <- "H3+C3" }
+for (i in 13:15) { data[[i]]$Pair <- "H4+C4" }
+for (i in 16:18) { data[[i]]$Pair <- "H5+C5" }
+for (i in 19:21) { data[[i]]$Pair <- "H6+C6" }
+
+#individual cell line used in collection
+for (i in 1:length(data)) { data[[i]]$Individual <- NA }
+for (i in 1:6) { data[[i]]$Individual[which(data[[i]]$Species=="Human")] <- "H1" }
+for (i in 1:6) { data[[i]]$Individual[which(data[[i]]$Species=="Chimp")] <- "C1" }
+for (i in 7:9) { data[[i]]$Individual[which(data[[i]]$Species=="Human")] <- "H2" }
+for (i in 7:9) { data[[i]]$Individual[which(data[[i]]$Species=="Chimp")] <- "C2" }
+for (i in 10:12) { data[[i]]$Individual[which(data[[i]]$Species=="Human")] <- "H3" }
+for (i in 10:12) { data[[i]]$Individual[which(data[[i]]$Species=="Chimp")] <- "C3" }
+for (i in 13:15) { data[[i]]$Individual[which(data[[i]]$Species=="Human")] <- "H4" }
+for (i in 13:15) { data[[i]]$Individual[which(data[[i]]$Species=="Chimp")] <- "C4" }
+for (i in 16:18) { data[[i]]$Individual[which(data[[i]]$Species=="Human")] <- "H5" }
+for (i in 16:18) { data[[i]]$Individual[which(data[[i]]$Species=="Chimp")] <- "C5" }
+for (i in 19:21) { data[[i]]$Individual[which(data[[i]]$Species=="Human")] <- "H6" }
+for (i in 19:21) { data[[i]]$Individual[which(data[[i]]$Species=="Chimp")] <- "C6" }
+
+#replicate in overall study design
+for (i in c(1:3,7:21)) { data[[i]]$Replicate <- "1" }
+for (i in 4:6) { data[[i]]$Replicate <- "2" }
+
+#msc media
+for (i in c(1:3,7:12)) { data[[i]]$MSCmedia <- "3B" }
+for (i in c(4:6,13:21)) { data[[i]]$MSCmedia <- "2B" }
+
+#abbreviation of sample name in collection
+for (i in 1:length(data)) { data[[i]]$Sample <- NA }
+for (i in 1:length(data)) { 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="H1" & data[[i]]$Replicate=="1")] <- "H1-I" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="H1" & data[[i]]$Replicate=="2")] <- "H1-I-r2" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="H2" & data[[i]]$Replicate=="1")] <- "H2-I" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="H3" & data[[i]]$Replicate=="1")] <- "H3-I" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="H4" & data[[i]]$Replicate=="1")] <- "H4-I" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="H5" & data[[i]]$Replicate=="1")] <- "H5-I" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="H6" & data[[i]]$Replicate=="1")] <- "H6-I"
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="C1" & data[[i]]$Replicate=="1")] <- "C1-I" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="C1" & data[[i]]$Replicate=="2")] <- "C1-I-r2" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="C2" & data[[i]]$Replicate=="1")] <- "C2-I" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="C3" & data[[i]]$Replicate=="1")] <- "C3-I" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="C4" & data[[i]]$Replicate=="1")] <- "C4-I" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="C5" & data[[i]]$Replicate=="1")] <- "C5-I" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="C6" & data[[i]]$Replicate=="1")] <- "C6-I" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="H1" & data[[i]]$Replicate=="1")] <- "H1-M" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="H1" & data[[i]]$Replicate=="2")] <- "H1-M-r2" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="H2" & data[[i]]$Replicate=="1")] <- "H2-M" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="H3" & data[[i]]$Replicate=="1")] <- "H3-M" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="H4" & data[[i]]$Replicate=="1")] <- "H4-M" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="H5" & data[[i]]$Replicate=="1")] <- "H5-M" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="H6" & data[[i]]$Replicate=="1")] <- "H6-M"
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="C1" & data[[i]]$Replicate=="1")] <- "C1-M" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="C1" & data[[i]]$Replicate=="2")] <- "C1-M-r2" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="C2" & data[[i]]$Replicate=="1")] <- "C2-M" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="C3" & data[[i]]$Replicate=="1")] <- "C3-M" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="C4" & data[[i]]$Replicate=="1")] <- "C4-M" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="C5" & data[[i]]$Replicate=="1")] <- "C5-M" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="C6" & data[[i]]$Replicate=="1")] <- "C6-M" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="H1" & data[[i]]$Replicate=="1")] <- "H1-O" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="H1" & data[[i]]$Replicate=="2")] <- "H1-O-r2" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="H2" & data[[i]]$Replicate=="1")] <- "H2-O" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="H3" & data[[i]]$Replicate=="1")] <- "H3-O" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="H4" & data[[i]]$Replicate=="1")] <- "H4-O" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="H5" & data[[i]]$Replicate=="1")] <- "H5-O" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="H6" & data[[i]]$Replicate=="1")] <- "H6-O"
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="C1" & data[[i]]$Replicate=="1")] <- "C1-O" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="C1" & data[[i]]$Replicate=="2")] <- "C1-O-r2" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="C2" & data[[i]]$Replicate=="1")] <- "C2-O" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="C3" & data[[i]]$Replicate=="1")] <- "C3-O" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="C4" & data[[i]]$Replicate=="1")] <- "C4-O" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="C5" & data[[i]]$Replicate=="1")] <- "C5-O" 
+  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="C6" & data[[i]]$Replicate=="1")] <- "C6-O" 
+}
+
+samples <- c("C1-I","C1-I-r2","C2-I","C3-I","C4-I","C5-I","C6-I",
+             "H1-I","H1-I-r2","H2-I","H3-I","H4-I","H5-I","H6-I",
+             "C1-M","C1-M-r2","C2-M","C3-M","C4-M","C5-M","C6-M",
+             "H1-M","H1-M-r2","H2-M","H3-M","H4-M","H5-M","H6-M",
+             "C1-O","C1-O-r2","C2-O","C3-O","C4-O","C5-O","C6-O",
+             "H1-O","H1-O-r2","H2-O","H3-O","H4-O","H5-O","H6-O")
+
+#several details on cell line and collection
+for (i in 1:length(data)) { data[[i]]$Sex <- NA }
+for (i in 1:length(data)) { data[[i]]$Age <- NA }
+for (i in 1:length(data)) { data[[i]]$DateCollection <- NA }
+for (i in 1:length(data)) { data[[i]]$Number6W <- NA }
+for (i in 1:length(data)) { data[[i]]$PrewashCount <- NA }
+for (i in 1:length(data)) { data[[i]]$PrewashViability <- NA }
+for (i in 1:length(data)) { data[[i]]$PostwashCount <- NA }
+for (i in 1:length(data)) { data[[i]]$PostwashViability <- NA }
+for (i in 1:length(data)) { data[[i]]$PostmixCount <- NA }
+for (i in 1:length(data)) { data[[i]]$PostmixViability <- NA }
+for (i in 1:length(data)) { data[[i]]$DatecDNA <- NA }
+for (i in 1:length(data)) { data[[i]]$DateLibrary <- NA }
+for (i in 1:length(data)) { data[[i]]$SequencingBatch <- NA }
+for (i in 1:length(data)) { 
+  for(j in samples) {
+    if(j %in% batch$Sample_in_Pool) {
+      data[[i]]$Sex[which(data[[i]]$Sample==j)] <- batch$Sex_in_Pool[which(batch$Sample_in_Pool==j)]
+      data[[i]]$Age[which(data[[i]]$Sample==j)] <- batch$Age_in_Pool[which(batch$Sample_in_Pool==j)]
+      data[[i]]$DateCollection[which(data[[i]]$Sample==j)] <- batch$Date_of_10X_Collection[which(batch$Sample_in_Pool==j)]
+      data[[i]]$Number6W[which(data[[i]]$Sample==j)] <- batch$Number_of_6wells_Used[which(batch$Sample_in_Pool==j)]
+      data[[i]]$PrewashCount[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Count_Prewash[which(batch$Sample_in_Pool==j)]
+      data[[i]]$PrewashViability[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Viability_Prewash[which(batch$Sample_in_Pool==j)]
+      data[[i]]$PostwashCount[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Count_Postwash[which(batch$Sample_in_Pool==j)]
+      data[[i]]$PostwashViability[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Viability_Postwash[which(batch$Sample_in_Pool==j)]
+      data[[i]]$PostmixCount[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Count_Postwash_Postmix[which(batch$Sample_in_Pool==j)]
+      data[[i]]$PostmixViability[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Viability_Postwash_Postmix[which(batch$Sample_in_Pool==j)]
+      data[[i]]$DatecDNA[which(data[[i]]$Sample==j)] <- batch$Date_of_10X_cDNA_Synthesis[which(batch$Sample_in_Pool==j)]
+      data[[i]]$DateLibrary[which(data[[i]]$Sample==j)] <- batch$Date_of_10X_Library_Prep[which(batch$Sample_in_Pool==j)]
+      data[[i]]$SequencingBatch[which(data[[i]]$Sample==j)] <- batch$X10X_Sequencing_Pool[which(batch$Sample_in_Pool==j)]
+    }
+  }
+}
+
+#facs information (control)
+for (i in 1:length(data)) { data[[i]]$CD90_Control <- NA }
+for (i in 1:length(data)) { data[[i]]$CD73_Control <- NA }
+for (i in 1:length(data)) { data[[i]]$CD105_Control <- NA }
+for (i in 1:length(data)) { data[[i]]$CD45.CD34.CD11b.CD19.HLA.DR_Control <- NA }
+for (i in 1:length(data)) { 
+  for(j in samples) {
+    if(j %in% fcs.ctrl$Abbr_Details) {
+      data[[i]]$CD90_Control[which(data[[i]]$Sample==j)] <- fcs.ctrl$CD90_Percentage[which(fcs.ctrl$Abbr_Details==j)] 
+      data[[i]]$CD73_Control[which(data[[i]]$Sample==j)] <- fcs.ctrl$CD73_Percentage[which(fcs.ctrl$Abbr_Details==j)] 
+      data[[i]]$CD105_Control[which(data[[i]]$Sample==j)] <- fcs.ctrl$CD105_Percentage[which(fcs.ctrl$Abbr_Details==j)] 
+      data[[i]]$CD45.CD34.CD11b.CD19.HLA.DR_Control[which(data[[i]]$Sample==j)] <-
+        fcs.ctrl$CD45.CD34.CD11b.CD19.HLA.DR_Percentage[which(fcs.ctrl$Abbr_Details==j)]
+    }
+  }
+}
+
+#facs information (cocktail) 
+for (i in 1:length(data)) { data[[i]]$CD90 <- NA }
+for (i in 1:length(data)) { data[[i]]$CD73 <- NA }
+for (i in 1:length(data)) { data[[i]]$CD105 <- NA }
+for (i in 1:length(data)) { data[[i]]$CD45.CD34.CD11b.CD19.HLA.DR <- NA }
+for (i in 1:length(data)) { 
+  for(j in samples) {
+    if(j %in% fcs.ipsc$Abbr_Details) {
+      data[[i]]$CD90[which(data[[i]]$Sample==j)] <- fcs.ipsc$CD90_Percentage[which(fcs.ipsc$Abbr_Details==j)] 
+      data[[i]]$CD73[which(data[[i]]$Sample==j)] <- fcs.ipsc$CD73_Percentage[which(fcs.ipsc$Abbr_Details==j)] 
+      data[[i]]$CD105[which(data[[i]]$Sample==j)] <- fcs.ipsc$CD105_Percentage[which(fcs.ipsc$Abbr_Details==j)] 
+      data[[i]]$CD45.CD34.CD11b.CD19.HLA.DR[which(data[[i]]$Sample==j)] <- fcs.ipsc$CD45.CD34.CD11b.CD19.HLA.DR_Percentage[which(fcs.ipsc$Abbr_Details==j)]
+    }
+  }
+}
+for (i in 1:length(data)) { 
+  for(j in samples) {
+    if(j %in% fcs.msc$Abbr_Details) {
+      data[[i]]$CD90[which(data[[i]]$Sample==j)] <- fcs.msc$CD90_Percentage[which(fcs.msc$Abbr_Details==j)] 
+      data[[i]]$CD73[which(data[[i]]$Sample==j)] <- fcs.msc$CD73_Percentage[which(fcs.msc$Abbr_Details==j)] 
+      data[[i]]$CD105[which(data[[i]]$Sample==j)] <- fcs.msc$CD105_Percentage[which(fcs.msc$Abbr_Details==j)] 
+      data[[i]]$CD45.CD34.CD11b.CD19.HLA.DR[which(data[[i]]$Sample==j)] <- fcs.msc$CD45.CD34.CD11b.CD19.HLA.DR_Percentage[which(fcs.msc$Abbr_Details==j)]
+    }
+  }
+}
+
+#alizarin red data
+for (i in 1:length(data)) { data[[i]]$Alizarin <- NA }
+for (i in 1:length(data)) { 
+  for(j in samples) {
+    if(j %in% alz$Sample) {
+      data[[i]]$Alizarin[which(data[[i]]$Sample==j)] <- alz$Absorbance_Value[which(alz$Sample==j)]
+    }
+  }
+}
+
+#oil red data (put with MSCs and osteogenic cells)
+for (i in 1:length(data)) { data[[i]]$OilRed <- NA }
+for (i in 1:length(data)) { 
+  for(j in samples) {
+    if(j %in% oil$Sample) {
+      data[[i]]$OilRed[which(data[[i]]$Sample==j)] <- oil$Absorbance_Value[which(oil$Sample==j)]
+    }
+  }
+}
+  
+#cell classification information - stage of differentiation at collection
+for (i in c(1,4,7,10,13,16,19)) { data[[i]]$Stage <- "Time 0" }
+for (i in c(2,5,8,11,14,17,20)) { data[[i]]$Stage <- "Time 1" }
+for (i in c(3,6,9,12,15,18,21)) { data[[i]]$Stage <- "Time 2" }
+
+```
+
+```{r, eval=FALSE, echo=TRUE}
+
+#Save data
+saveRDS(data, file="./data/cellranger-data-full/data.rds")
+
+```
+
+### Export processed count matrices for GEO
+
+Processed data for pilot eQTL paper
+
+```{r, eval=FALSE}
+
+#Export count matrix and metadata for GHO-1, GHO-2, GHO-3, and GHO-4 [processed data for pilot eQTL paper]
+
+#Load and add metadata to GHO-3
+dataGHO3 <- readRDS(paste0("./data/cellranger-data-full/h.c.dat.spp.GHO-3.rds"))
+#percent mitochondria
+mito <- c("MT-ATP6","MT-ATP8","MT-CO1","MT-CO2","MT-CO3","MT-CYB","MT-ND1","MT-ND2","MT-ND3","MT-ND4","MT-ND4L","MT-ND5")
+dataGHO3$percent.mt <- PercentageFeatureSet(dataGHO3, features=mito)
+#collection
+dataGHO3$Collection <- 0
+#cell type anticipated based on stage of differentiation at collection
+dataGHO3$Cell.Type <- "Chondrogenic"
+#individuals pooled together in collection
+dataGHO3$Pair <- "H1+C1"
+#individual cell line used in collection
+dataGHO3$Individual <- NA
+dataGHO3$Individual[which(dataGHO3$Species=="Human")] <- "H1"
+dataGHO3$Individual[which(dataGHO3$Species=="Chimp")] <- "C1"
+#replicate in overall study design
+dataGHO3$Replicate <- "1"
+#msc media
+dataGHO3$MSCmedia <- "3B"
+#abbreviation of sample name in collection
+dataGHO3$Sample <- NA
+dataGHO3$Sample[which(dataGHO3$Individual=="H1")] <- "H1-C" 
+dataGHO3$Sample[which(dataGHO3$Individual=="C1")] <- "C1-C" 
+#several details on cell line and collection
+dataGHO3$Sex <- "M"
+dataGHO3$Age <- NA
+dataGHO3$Age[which(dataGHO3$Individual=="H1")] <- 22
+dataGHO3$Age[which(dataGHO3$Individual=="C1")] <- 16
+dataGHO3$DateCollection <- "6/5/2019"
+dataGHO3$Number6W <- 3
+dataGHO3$PrewashCount <- NA
+dataGHO3$PrewashCount[which(dataGHO3$Individual=="H1")] <- 1025000
+dataGHO3$PrewashCount[which(dataGHO3$Individual=="C1")] <- 0.575
+dataGHO3$PrewashViability <- NA
+dataGHO3$PrewashViability[which(dataGHO3$Individual=="H1")] <- 2440000
+dataGHO3$PrewashViability[which(dataGHO3$Individual=="C1")] <- 0.48
+dataGHO3$PostwashCount <- NA
+dataGHO3$PostwashCount[which(dataGHO3$Individual=="H1")] <- 440000
+dataGHO3$PostwashCount[which(dataGHO3$Individual=="C1")] <- 445000
+dataGHO3$PostwashViability <- NA
+dataGHO3$PostwashViability[which(dataGHO3$Individual=="H1")] <- 0.75
+dataGHO3$PostwashViability[which(dataGHO3$Individual=="C1")] <- 0.6
+dataGHO3$PostmixCount <- 425000
+dataGHO3$PostmixViability <- 0.75
+dataGHO3$DatecDNA <- "6/5/2019"
+dataGHO3$DateLibrary <- "6/10/2019"
+dataGHO3$SequencingBatch <- 1
+#facs information (control)
+dataGHO3$CD90_Control <- NA
+dataGHO3$CD73_Control <- NA
+dataGHO3$CD105_Control <- NA
+dataGHO3$CD45.CD34.CD11b.CD19.HLA.DR_Control <- NA
+#facs information (cocktail) 
+dataGHO3$CD90 <- NA
+dataGHO3$CD73 <- NA
+dataGHO3$CD105 <- NA
+dataGHO3$CD45.CD34.CD11b.CD19.HLA.DR <- NA
+#alizarin red data
+dataGHO3$Alizarin <- NA
+#oil red data (put with MSCs and osteogenic cells)
+dataGHO3$OilRed <- NA
+#cell classification information - stage of differentiation at collection
+dataGHO3$Stage <- "Time 3"
+
+#####
+
+#Read in remaining data
+data <- readRDS("./data/cellranger-data-full/data.rds")
+
+#Rename cells
+data[[1]] <- RenameCells(data[[1]], add.cell.id="GHO-1")
+data[[2]] <- RenameCells(data[[2]], add.cell.id="GHO-2")
+dataGHO3  <- RenameCells(dataGHO3, add.cell.id="GHO-3")
+data[[3]] <- RenameCells(data[[3]], add.cell.id="GHO-4")
+
+#Combine raw count data
+tbl.cnt <- cbind(as.data.frame(GetAssayData(object=data[[1]], slot="counts")),
+                 as.data.frame(GetAssayData(object=data[[2]], slot="counts")),
+                 as.data.frame(GetAssayData(object=dataGHO3, slot="counts")),
+                 as.data.frame(GetAssayData(object=data[[3]], slot="counts")))
+
+#Combine metadata
+tbl.met <- rbind(as.data.frame(data[[1]]@meta.data)[,-c(1:3)],
+                 as.data.frame(data[[2]]@meta.data)[,-c(1:3)],
+                 as.data.frame(dataGHO3@meta.data)[,-c(1:3)],
+                 as.data.frame(data[[3]]@meta.data)[,-c(1:3)])
+
+#Save processed data
+write.table(tbl.cnt, 
+            file="./data/cellranger-data-full/GHO_count.csv", 
+            sep=',',
+            row.names=T,
+            col.names=T,
+            quote=F)
+write.table(tbl.met, 
+            file="./data/cellranger-data-full/GHO_meta.csv", 
+            sep=',',
+            row.names=T,
+            col.names=T,
+            quote=F)
+
+```
+
+```{bash, eval=FALSE}
+#easiest to do this on the computing cluster
+
+#Make folder containing files to be uploaded to GEO
+cd /project2/gilad/ghousman
+mkdir geo_GHO_20210218
+cd geo_GHO_20210218
+mkdir data_raw
+mkdir data_proc
+cd data_proc
+cp /project2/gilad/ghousman/skeletal-human-chimp/human-chimp-skeletal-scRNA/data/cellranger-data-full/GHO_count.csv ./GHO_count.csv
+cp /project2/gilad/ghousman/skeletal-human-chimp/human-chimp-skeletal-scRNA/data/cellranger-data-full/GHO_meta.csv ./GHO_meta.csv
+md5sum *
+#manually added file checksum to metadata file
+cd ..
+cd data_raw
+cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190621_K00242_0576_AH7G3JBBXY_YG-GH-10X-4S-ln1/H7G3JBBXY_6/*/*.fastq.gz .
+cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190626_K00242_0578_AH77TNBBXY_YG-GH-10X-4S-ln2/H77TNBBXY_1/*/*.fastq.gz .
+cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190726_K00242_0593_BH77N2BBXY_YG-GH-10X-4S-xtra-ln1/H77N2BBXY_7/*/*.fastq.gz .
+cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190730_K00242_0594_BH7N3HBBXY_YG-GH-10X-4S-xtra-ln2/H7N3HBBXY_3/*/*.fastq.gz .
+rm *_I1_*.fastq.gz
+md5sum *
+#manually added file checksum to metadata file
+#manually transferred metadata file to geo_GHO_20210218 via FileZilla
+
+#Upload files to GEO
+cd /project2/gilad/ghousman
+sftp geoftp@sftp-private.ncbi.nlm.nih.gov
+cd uploads/ghousman_SbedAyUe
+mkdir geo_GHO_20210218
+put -R /project2/gilad/ghousman/geo_GHO_20210218
+
+#Remove files for GEO
+cd /project2/gilad/ghousman
+rm -r geo_GHO_20210218
+```
+
+Processed data remaining for comparative osteogenesis paper
+
+```{r, eval=FALSE}
+
+#Export count matrix and metadata for remaining samples
+
+#Load data
+batch <- read.csv(file='./data/scrna-batch.csv', header=TRUE, sep=",")
+data <- readRDS("./data/cellranger-data-full/data.rds")
+
+#Rename cells and combine raw count data and metadata
+tbl.cnt <- data.frame(matrix(NA, nrow=19377, ncol=0))
+tbl.met <- data.frame(matrix(NA, nrow=0, ncol=33))
+i=4
+while (i <= length(data)) {
+  print(i)
+  data[[i]] <- RenameCells(data[[i]], add.cell.id=batch$Sample_Name_at_Core[i])
+  tbl.cnt <- cbind(tbl.cnt,as.data.frame(GetAssayData(object=data[[i]], slot="counts")))
+  tbl.met <- rbind(tbl.met,as.data.frame(data[[i]]@meta.data)[,-c(1:3)])
+  i=i+1
+}
+
+#Save processed data
+write.table(tbl.cnt, 
+            file="./data/cellranger-data-full/HOU_count.csv", 
+            sep=',',
+            row.names=T,
+            col.names=T,
+            quote=F)
+write.table(tbl.met, 
+            file="./data/cellranger-data-full/HOU_meta.csv", 
+            sep=',',
+            row.names=T,
+            col.names=T,
+            quote=F)
+
+```
+
+```{bash, eval=FALSE}
+#easiest to do this on the computing cluster
+cd /project2/gilad/ghousman
+
+#Make folder containing files to be uploaded to GEO
+mkdir geo_GHO_20210807
+cd geo_GHO_20210807
+mkdir data_raw
+mkdir data_proc
+cd data_proc
+cp /project2/gilad/ghousman/skeletal-human-chimp/human-chimp-skeletal-scRNA/data/cellranger-data-full/HOU_count.csv .
+cp /project2/gilad/ghousman/skeletal-human-chimp/human-chimp-skeletal-scRNA/data/cellranger-data-full/HOU_meta.csv .
+md5sum *
+#manually added file checksum to metadata file
+cd ..
+cd data_raw
+cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78/*/*.fastq.gz .
+cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123/*/*.fastq.gz .
+#these files have the same names as some in the next folder [see notes below] so rename the files
+for file in *.fastq.gz; do mv "$file" "${file//_L001_/_L005_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//_L002_/_L006_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//_L003_/_L009_}"; done
+cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234/*/*.fastq.gz .
+cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78/*/*.fastq.gz .
+#these files have the same names as some in the next two folders [see notes below] so rename the files
+for file in *.fastq.gz; do mv "$file" "${file//HOU-17_S1_L007_/HOU-17_S1_L005_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-18_S2_L007_/HOU-18_S2_L005_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-19_S3_L007_/HOU-19_S3_L005_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-20_S4_L007_/HOU-20_S4_L005_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-21_S5_L007_/HOU-21_S5_L005_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-22_S6_L007_/HOU-22_S6_L005_}"; done
+cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7/*/*.fastq.gz .
+#these files have the same names as some in the next folder [see notes below] so rename the files
+for file in *.fastq.gz; do mv "$file" "${file//HOU-17_S1_L007_/HOU-17_S1_L006_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-18_S2_L007_/HOU-18_S2_L006_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-19_S3_L007_/HOU-19_S3_L006_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-20_S4_L007_/HOU-20_S4_L006_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-21_S5_L007_/HOU-21_S5_L006_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-22_S6_L007_/HOU-22_S6_L006_}"; done
+cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7/*/*.fastq.gz .
+rm *_I1_*.fastq.gz
+md5sum *
+#manually added file checksum to metadata file
+#manually transferred metadata file to geo_GHO_20210807 via FileZilla
+
+#Upload files to GEO
+cd /project2/gilad/ghousman
+sftp geoftp@sftp-private.ncbi.nlm.nih.gov
+cd uploads/ghousman_SbedAyUe
+mkdir geo_GHO_20210807
+put -R /project2/gilad/ghousman/geo_GHO_20210807
+
+#Remove files for GEO
+cd /project2/gilad/ghousman
+rm -r geo_GHO_20210807
+
+### FILE RENAMING NOTES
+### NEED TO RENAME FILES TO L005/L006/L009 ###
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123/*/*_L001_*.fastq.gz
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123/*/*_L002_*.fastq.gz
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123/*/*_L003_*.fastq.gz
+### vs.
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234/*/*_L001_*.fastq.gz
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234/*/*_L002_*.fastq.gz
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234/*/*_L003_*.fastq.gz
+### NEED TO RENAME FILES TO L005/L006 ###
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78/*/*_L007_*.fastq.gz
+### vs.
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7/*/*_L007_*.fastq.gz
+### vs.
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7/*/*_L007_*.fastq.gz
+```
