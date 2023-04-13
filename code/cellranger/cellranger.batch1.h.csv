@@ -1,5 +1,5 @@
 [gene-expression],,
-reference,/project2/gilad/kenneth/References/HumanChimpCellranger/cellranger4.0/HumanOrthoV2,
+reference,/project2/gilad/ghousman/references/cellranger7.0.0/HumanOrthoV2,
 no-secondary,TRUE,
 ,,
 [libraries],,
@@ -8,6 +8,10 @@ YG-GH-20S-10X-GH-01,/project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time
 YG-GH-20S-10X-GH-02,/project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/fastq,Multiplexing Capture
 YG-GH-20S-10X-GH-03,/project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/fastq,Gene Expression
 YG-GH-20S-10X-GH-04,/project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/fastq,Multiplexing Capture
+YG-GH-22S-ln1-GH-1-GH-1,/project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/fastq,Gene Expression
+YG-GH-22S-ln2-GH-2-GH-2,/project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/fastq,Multiplexing Capture
+YG-GH-22S-ln1-GH-3-GH-3,/project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/fastq,Gene Expression
+YG-GH-22S-ln2-GH-4-GH-4,/project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/fastq,Multiplexing Capture
 ,,
 [samples],,
 sample_id,cmo_ids,

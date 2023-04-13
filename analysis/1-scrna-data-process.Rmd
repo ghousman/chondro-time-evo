@@ -54,45 +54,18 @@ References:
 
 #process reads using human genome and ortho exon annotation
 cd /project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/scRNA
-sbatch ./../chondro-time-evo/code/cellranger.batch1.h.sh
-sbatch ./../chondro-time-evo/code/cellranger.batch2.h.sh
+sbatch ./../chondro-time-evo/code/cellranger/cellranger.batch1.h.sh
+sbatch ./../chondro-time-evo/code/cellranger/cellranger.batch2.h.sh
 
 #process reads using chimp genome and ortho exon annotation
 cd /project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/scRNA
-sbatch ./../chondro-time-evo/code/cellranger.batch1.c.sh
-sbatch ./../chondro-time-evo/code/cellranger.batch2.c.sh
-
-### NEED TO FIX STARTING HERE ###
-### SEGMENTATION FAULT - SAME ISSUE AS ABOVE ###
-### NEED TO FIX STARTING HERE ###
+sbatch ./../chondro-time-evo/code/cellranger/cellranger.batch1.c.sh
+sbatch ./../chondro-time-evo/code/cellranger/cellranger.batch2.c.sh
 
 #process reads using human/chimp combined genome and ortho exon annotation
 cd /project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/scRNA
-sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-01
-sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-02
-sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-03
-sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-04
-sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-05
-sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-06
-sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-07
-sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-08
-sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-09
-sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-10
-sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-11
-sbatch ./../chondro-time-evo/code/cellranger.batch1.hc.sh YG-GH-20S-10X-GH-12
-cd /project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/scRNA
-sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-01
-sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-02
-sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-03
-sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-04
-sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-05
-sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-06
-sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-07
-sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-08
-sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-09
-sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-10
-sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-11
-sbatch ./../chondro-time-evo/code/cellranger.batch2.hc.sh YG-GH-20S-10X-GH-12
+sbatch ./../chondro-time-evo/code/cellranger/cellranger.batch1.hc.sh
+sbatch ./../chondro-time-evo/code/cellranger/cellranger.batch2.hc.sh
 
 ```
 
@@ -189,6 +162,8 @@ barcode_assign_b1 <- merge(barcode_assign_b1, x_2[,c(2:4)], by="Barcode")
 colnames(barcode_assign_b1)[6:9] <- c("ChimpRef_0.9","ChimpRef_0.9_AssignProb","ChimpRef_0.5","ChimpRef_0.5_AssignProb")
 
 ```
+
+ADD H&C COMBINED REFERENCE OUTPUT?
 
 ```{r}
 
