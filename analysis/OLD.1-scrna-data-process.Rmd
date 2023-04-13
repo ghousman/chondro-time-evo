@@ -1,0 +1,483 @@
+---
+title: "scrna-data-process"
+author: "Genevieve Housman"
+date: "April 2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# scRNA-seq Analyses - Data Processing with Cell Ranger
+
+## Make and save Seruat objects
+
+```{r}
+
+#batch 1
+
+#(1)load data
+raw_data <- Read10X(data="./../scRNA/human_chimp_chondro_time_batch1_h/outs/multi/count/raw_feature_bc_matrix")
+#raw_data <- Read10X(data="./../human_chimp_chondro_time_batch1_h/outs/multi/count/raw_feature_bc_matrix")
+
+#(2)create seurat objects
+data <- CreateSeuratObject(counts=raw_data$`Gene Expression`)
+
+#(3)view details of seurat objects
+data #19377 features, 2356630 samples
+
+#(4)add percent of mitochondrial reads to metadata
+#which(sapply(data@assays$RNA@counts@Dimnames[[1]], stri_count_regex, pattern="MT-")==1)
+#MT-CO2   16608
+#MT-CYB   16616
+#MT-ND2   16635
+#MT-ND5   16643
+#MT-CO1   16654
+#MT-ND3   16676
+#MT-ND4   16701
+#MT-ND1   16703
+#MT-ATP6  16709
+#MT-CO3   16732
+#MT-ND4L  17250
+#MT-ATP8  17689
+#INMT-MINDY4  18276 - not actually a mitochondrial gene
+mito <- c("MT-ATP6","MT-ATP8","MT-CO1","MT-CO2","MT-CO3","MT-CYB","MT-ND1","MT-ND2","MT-ND3","MT-ND4","MT-ND4L","MT-ND5")
+data$percent.mt <- PercentageFeatureSet(data, features=mito)
+
+saveRDS(data, file='./data/data-batch1-humanref.rds')
+
+rm(raw_data,data)
+
+```
+
+```{r}
+
+#batch 2
+
+#(1)load data
+raw_data <- Read10X(data="./../scRNA/human_chimp_chondro_time_batch2_h/outs/multi/count/raw_feature_bc_matrix")
+#raw_data <- Read10X(data="./../human_chimp_chondro_time_batch2_h/outs/multi/count/raw_feature_bc_matrix")
+
+#(2)create seurat objects
+data <- CreateSeuratObject(counts=raw_data$`Gene Expression`)
+
+#(3)view details of seurat objects
+data #19377 features, 1689884 samples
+
+#(4)add percent of mitochondrial reads to metadata
+mito <- c("MT-ATP6","MT-ATP8","MT-CO1","MT-CO2","MT-CO3","MT-CYB","MT-ND1","MT-ND2","MT-ND3","MT-ND4","MT-ND4L","MT-ND5")
+data$percent.mt <- PercentageFeatureSet(data, features=mito)
+
+saveRDS(data, file='./data/data-batch2-humanref.rds')
+
+rm(raw_data,data)
+
+```
+
+## Add metadata to Seurat objects and subset
+
+```{r}
+
+#batch 1
+
+data <- readRDS('./data/data-batch1-humanref.rds')
+
+#(5)add cellplex data to metadata
+m <- match(rownames(data@meta.data),barcode_assign_b1$Barcode)
+if(any(is.na(m))) cat("Not all barcodes are in data.\n")
+data <- AddMetaData(data, barcode_assign_b1[m,]$HumanRef_0.5, col.name="CellPlex_HumanRef_0.5")
+data <- AddMetaData(data, barcode_assign_b1[m,]$ChimpRef_0.5, col.name="CellPlex_ChimpRef_0.5")
+data <- AddMetaData(data, barcode_assign_b1[m,]$HumanRef_0.9, col.name="CellPlex_HumanRef_0.9")
+data <- AddMetaData(data, barcode_assign_b1[m,]$ChimpRef_0.9, col.name="CellPlex_ChimpRef_0.9")
+data <- AddMetaData(data, barcode_assign_b1[m,]$HumanRef_0.5_AssignProb, col.name="CellPlex_HumanRef_0.5_AssignProb")
+data <- AddMetaData(data, barcode_assign_b1[m,]$ChimpRef_0.5_AssignProb, col.name="CellPlex_ChimpRef_0.5_AssignProb")
+data <- AddMetaData(data, barcode_assign_b1[m,]$HumanRef_0.9_AssignProb, col.name="CellPlex_HumanRef_0.9_AssignProb")
+data <- AddMetaData(data, barcode_assign_b1[m,]$ChimpRef_0.9_AssignProb, col.name="CellPlex_ChimpRef_0.9_AssignProb")
+
+data_sub <- subset(data, subset=CellPlex_HumanRef_0.5!="NA")
+data_sub <- subset(data_sub, subset=CellPlex_HumanRef_0.5!="Unassigned")
+data_sub <- subset(data_sub, subset=CellPlex_HumanRef_0.5!="Multiplet")
+data_sub <- subset(data_sub, subset=CellPlex_HumanRef_0.5!="Blank")
+
+data_sub@meta.data$Time <- "NA"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO301")] <- "d00"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO302")] <- "d0"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO303")] <- "d7-m"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO304")] <- "d14-m"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO305")] <- "d7-c"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO306")] <- "d14-c"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO307")] <- "d00"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO308")] <- "d0"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO309")] <- "d7-m"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO310")] <- "d14-m"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO311")] <- "d7-c"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO312")] <- "d14-c"
+data_sub@meta.data$Time <- factor(data_sub@meta.data$Time, levels=c("d00","d0","d7-m","d14-m","d7-c","d14-c"))
+
+data_sub@meta.data$Sample <- "NA"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO301")] <- "H1+C1"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO302")] <- "H1+C1"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO303")] <- "H1+C1"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO304")] <- "H1+C1"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO305")] <- "H1+C1"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO306")] <- "H1+C1"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO307")] <- "H2+C4"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO308")] <- "H2+C4"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO309")] <- "H2+C4"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO310")] <- "H2+C4"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO311")] <- "H2+C4"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO312")] <- "H2+C4"
+
+data_sub@meta.data$SampleTime <- "NA"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO301")] <- "H1+C1_d00"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO302")] <- "H1+C1_d0"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO303")] <- "H1+C1_d7-m"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO304")] <- "H1+C1_d14-m"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO305")] <- "H1+C1_d7-c"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO306")] <- "H1+C1_d14-c"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO307")] <- "H2+C4_d00"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO308")] <- "H2+C4_d0"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO309")] <- "H2+C4_d7-m"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO310")] <- "H2+C4_d14-m"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO311")] <- "H2+C4_d7-c"
+data_sub@meta.data$SampleTime[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO312")] <- "H2+C4_d14-c"
+data_sub@meta.data$SampleTime <- factor(data_sub@meta.data$SampleTime,
+                                        levels=c("H1+C1_d00","H1+C1_d0","H1+C1_d7-m","H1+C1_d14-m","H1+C1_d7-c","H1+C1_d14-c",
+                                                 "H2+C4_d00","H2+C4_d0","H2+C4_d7-m","H2+C4_d14-m","H2+C4_d7-c","H2+C4_d14-c"))
+
+#(6)plot QC metrics
+VlnPlot(data_sub,
+        features=c("nFeature_RNA","nCount_RNA","percent.mt"),
+        group.by="CellPlex_HumanRef_0.5",
+        ncol=1,
+        pt.size=0,
+        #stack=TRUE
+        )
+median(data_sub@meta.data$nCount_RNA)   #osteo paper: median 16157 umi per cell
+median(data_sub@meta.data$nFeature_RNA) #osteo paper: median 3939 genes per cell
+
+saveRDS(data_sub, file='./data/data-batch1-humanref-cmo0.5thresh.rds')
+
+rm(data,data_sub)
+
+```
+
+```{r}
+
+#batch 2
+
+data <- readRDS('./data/data-batch2-humanref.rds')
+
+#(5)add cellplex data to metadata
+m <- match(rownames(data@meta.data),barcode_assign_b2$Barcode)
+if(any(is.na(m))) cat("Not all barcodes are in data.\n")
+data <- AddMetaData(data, barcode_assign_b2[m,]$HumanRef_0.5, col.name="CellPlex_HumanRef_0.5")
+data <- AddMetaData(data, barcode_assign_b2[m,]$ChimpRef_0.5, col.name="CellPlex_ChimpRef_0.5")
+data <- AddMetaData(data, barcode_assign_b2[m,]$HumanRef_0.9, col.name="CellPlex_HumanRef_0.9")
+data <- AddMetaData(data, barcode_assign_b2[m,]$ChimpRef_0.9, col.name="CellPlex_ChimpRef_0.9")
+data <- AddMetaData(data, barcode_assign_b2[m,]$HumanRef_0.5_AssignProb, col.name="CellPlex_HumanRef_0.5_AssignProb")
+data <- AddMetaData(data, barcode_assign_b2[m,]$ChimpRef_0.5_AssignProb, col.name="CellPlex_ChimpRef_0.5_AssignProb")
+data <- AddMetaData(data, barcode_assign_b2[m,]$HumanRef_0.9_AssignProb, col.name="CellPlex_HumanRef_0.9_AssignProb")
+data <- AddMetaData(data, barcode_assign_b2[m,]$ChimpRef_0.9_AssignProb, col.name="CellPlex_ChimpRef_0.9_AssignProb")
+
+data_sub <- subset(data, subset=CellPlex_HumanRef_0.5!="NA")
+data_sub <- subset(data_sub, subset=CellPlex_HumanRef_0.5!="Unassigned")
+data_sub <- subset(data_sub, subset=CellPlex_HumanRef_0.5!="Multiplet")
+data_sub <- subset(data_sub, subset=CellPlex_HumanRef_0.5!="Blank")
+
+data_sub@meta.data$Time <- "NA"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO301")] <- "d0"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO302")] <- "d7-c"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO303")] <- "d14-c"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO304")] <- "d0"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO305")] <- "d7-c"
+data_sub@meta.data$Time[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO306")] <- "d14-c"
+
+data_sub@meta.data$Sample <- "NA"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO301")] <- "H5+C5"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO302")] <- "H5+C5"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO303")] <- "H5+C5"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO304")] <- "H3+C2"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO305")] <- "H3+C2"
+data_sub@meta.data$Sample[which(data_sub@meta.data$CellPlex_HumanRef_0.5=="CMO306")] <- "H3+C2"
+
+#(6)plot QC metrics
+VlnPlot(data_sub,
+        features=c("nFeature_RNA","nCount_RNA","percent.mt"),
+        group.by="CellPlex_HumanRef_0.5",
+        ncol=1,
+        pt.size=0)
+median(data_sub@meta.data$nCount_RNA)   #osteo paper: median 16157 umi per cell
+median(data_sub@meta.data$nFeature_RNA) #osteo paper: median 3939 genes per cell
+
+saveRDS(data_sub, file='./data/data-batch2-humanref-cmo0.5thresh.rds')
+
+rm(data,data_sub)
+
+```
+
+
+## Examine scRNA-seq data
+
+### Batch 1 independently - 2000 variable features
+
+```{r}
+
+#batch 1
+
+data_sub <- readRDS('./data/data-batch1-humanref-cmo0.5thresh.rds')
+
+#(7)normalize data
+data_sub <- NormalizeData(data_sub, normalization.method="LogNormalize", scale.factor=10000)
+
+#(8)find variable features
+data_sub <- FindVariableFeatures(data_sub, selection.method="vst", nfeatures=2000)
+LabelPoints(plot=VariableFeaturePlot(data_sub),
+            points=head(VariableFeatures(data_sub),10),
+            repel=TRUE)
+
+#(9)scale data
+data_sub <- ScaleData(data_sub, features=rownames(data_sub))
+
+#(10)pca
+data_sub <- RunPCA(data_sub,
+                   features=VariableFeatures(data_sub),
+                   npcs=100)
+
+VizDimLoadings(data_sub, dims=1:2, reduction="pca")
+DimPlot(data_sub, dims=1:2, reduction="pca")
+DimHeatmap(data_sub, dims=1, cells=500, balanced=TRUE)
+ElbowPlot(data_sub, ndims=100)
+
+#(11)unsupervised cell clustering
+data_sub <- FindNeighbors(data_sub, dims=1:30)
+data_sub <- FindClusters(data_sub, resolution=0.05)
+table(data_sub@meta.data$seurat_clusters)
+
+#(12)umap
+data_sub <- RunUMAP(data_sub, dims=1:30)
+#DimPlot(data_sub, reduction="umap", group.by="orig.ident")
+DimPlot(data_sub, reduction="umap", group.by="CellPlex_HumanRef_0.5")
+DimPlot(data_sub, reduction="umap", group.by="seurat_clusters")
+DimPlot(data_sub, reduction="umap", group.by="Sample")
+DimPlot(data_sub, reduction="umap", group.by="Time")
+DimPlot(data_sub, reduction="umap", group.by="Time", split.by="Sample")
+DimPlot(data_sub, reduction="umap", group.by="Time", split.by="Time")
+
+#(13)examine biomarkers
+VlnPlot(data_sub, features=c("COL2A1","SOX9","ACAN"), group.by="Time")
+FeaturePlot(data_sub, features=c("COL2A1","SOX9","ACAN"))
+
+Idents(data_sub) <- "Time"
+data.markers <- FindAllMarkers(data_sub, only.pos=TRUE, min.pct=0.25, logfc.threshold=0.25)
+data.markers %>%
+    group_by(cluster) %>%
+    slice_max(n=2, order_by=avg_log2FC)
+top10 <-
+  data.markers %>%
+    group_by(cluster) %>%
+    top_n(n=10, wt=avg_log2FC)
+DoHeatmap(data_sub, features=top10$gene) + NoLegend()
+
+#(14)examine other factors that could impact clustering
+FeaturePlot(data_sub, reduction="umap", features="CellPlex_HumanRef_0.5_AssignProb")
+FeaturePlot(data_sub, reduction="umap", features="CellPlex_HumanRef_0.5_AssignProb", split.by="Time")
+
+```
+
+### Batch 1 independently - 500 variable features
+
+```{r}
+
+#batch 1
+
+data_sub <- load('./data/data-batch1-humanref-cmo0.5thresh.rds')
+
+#(7)normalize data
+data_sub <- NormalizeData(data_sub, normalization.method="LogNormalize", scale.factor=10000)
+
+#(8)find variable features
+data_sub <- FindVariableFeatures(data_sub, selection.method="vst", nfeatures=500)
+LabelPoints(plot=VariableFeaturePlot(data_sub),
+            points=head(VariableFeatures(data_sub),10),
+            repel=TRUE)
+
+#(9)scale data
+data_sub <- ScaleData(data_sub, features=rownames(data_sub))
+
+#(10)pca
+data_sub <- RunPCA(data_sub,
+                   features=VariableFeatures(data_sub),
+                   npcs=100)
+
+VizDimLoadings(data_sub, dims=1:2, reduction="pca")
+DimPlot(data_sub, dims=1:2, reduction="pca")
+DimHeatmap(data_sub, dims=1, cells=500, balanced=TRUE)
+ElbowPlot(data_sub, ndims=100)
+
+#(11)unsupervised cell clustering
+data_sub <- FindNeighbors(data_sub, dims=1:30)
+data_sub <- FindClusters(data_sub, resolution=0.05)
+table(data_sub@meta.data$seurat_clusters)
+
+#(12)umap
+data_sub <- RunUMAP(data_sub, dims=1:30)
+#DimPlot(data_sub, reduction="umap", group.by="orig.ident")
+DimPlot(data_sub, reduction="umap", group.by="CellPlex_HumanRef_0.5")
+DimPlot(data_sub, reduction="umap", group.by="seurat_clusters")
+DimPlot(data_sub, reduction="umap", group.by="Sample")
+DimPlot(data_sub, reduction="umap", group.by="Time")
+DimPlot(data_sub, reduction="umap", group.by="Time", split.by="Sample")
+DimPlot(data_sub, reduction="umap", group.by="Time", split.by="Time")
+
+#(13)examine biomarkers
+VlnPlot(data_sub, features=c("COL2A1","SOX9","ACAN"), group.by="Time")
+FeaturePlot(data_sub, features=c("COL2A1","SOX9","ACAN"))
+
+Idents(data_sub) <- "Time"
+data.markers <- FindAllMarkers(data_sub, only.pos=TRUE, min.pct=0.25, logfc.threshold=0.25)
+data.markers %>%
+    group_by(cluster) %>%
+    slice_max(n=2, order_by=avg_log2FC)
+top10 <-
+  data.markers %>%
+    group_by(cluster) %>%
+    top_n(n=10, wt=avg_log2FC)
+DoHeatmap(data_sub, features=top10$gene) + NoLegend()
+
+#(14)examine other factors that could impact clustering
+FeaturePlot(data_sub, reduction="umap", features="CellPlex_HumanRef_0.5_AssignProb")
+FeaturePlot(data_sub, reduction="umap", features="CellPlex_HumanRef_0.5_AssignProb", split.by="Time")
+
+```
+
+### Batch 1 independently - all features
+
+```{r}
+
+#batch 1
+
+data_sub <- load('./data/data-batch1-humanref-cmo0.5thresh.rds')
+
+#(7)normalize data
+data_sub <- NormalizeData(data_sub, normalization.method="LogNormalize", scale.factor=10000)
+
+#(8)find variable features
+data_sub <- FindVariableFeatures(data_sub, selection.method="vst", nfeatures=2000)
+LabelPoints(plot=VariableFeaturePlot(data_sub),
+            points=head(VariableFeatures(data_sub),10),
+            repel=TRUE)
+
+#(9)scale data
+data_sub <- ScaleData(data_sub, features=rownames(data_sub))
+
+#(10)pca
+data_sub <- RunPCA(data_sub,
+                   features=rownames(data_sub),
+                   npcs=100)
+
+VizDimLoadings(data_sub, dims=1:2, reduction="pca")
+DimPlot(data_sub, dims=1:2, reduction="pca")
+DimHeatmap(data_sub, dims=1, cells=500, balanced=TRUE)
+ElbowPlot(data_sub, ndims=100)
+
+#(11)unsupervised cell clustering
+data_sub <- FindNeighbors(data_sub, dims=1:30)
+data_sub <- FindClusters(data_sub, resolution=0.05)
+table(data_sub@meta.data$seurat_clusters)
+
+#(12)umap
+data_sub <- RunUMAP(data_sub, dims=1:30)
+#DimPlot(data_sub, reduction="umap", group.by="orig.ident")
+DimPlot(data_sub, reduction="umap", group.by="CellPlex_HumanRef_0.5")
+DimPlot(data_sub, reduction="umap", group.by="seurat_clusters")
+DimPlot(data_sub, reduction="umap", group.by="Sample")
+DimPlot(data_sub, reduction="umap", group.by="Time")
+DimPlot(data_sub, reduction="umap", group.by="Time", split.by="Sample")
+DimPlot(data_sub, reduction="umap", group.by="Time", split.by="Time")
+
+#(13)examine biomarkers
+VlnPlot(data_sub, features=c("COL2A1","SOX9","ACAN"), group.by="Time")
+FeaturePlot(data_sub, features=c("COL2A1","SOX9","ACAN"))
+
+Idents(data_sub) <- "Time"
+data.markers <- FindAllMarkers(data_sub, only.pos=TRUE, min.pct=0.25, logfc.threshold=0.25)
+data.markers %>%
+    group_by(cluster) %>%
+    slice_max(n=2, order_by=avg_log2FC)
+top10 <-
+  data.markers %>%
+    group_by(cluster) %>%
+    top_n(n=10, wt=avg_log2FC)
+DoHeatmap(data_sub, features=top10$gene) + NoLegend()
+
+#(14)examine other factors that could impact clustering
+FeaturePlot(data_sub, reduction="umap", features="CellPlex_HumanRef_0.5_AssignProb")
+FeaturePlot(data_sub, reduction="umap", features="CellPlex_HumanRef_0.5_AssignProb", split.by="Time")
+
+```
+
+
+
+### Batch 2 independently - 2000 variable features
+
+```{r}
+
+#batch 2
+
+data_sub <- load('./data/data-batch2-humanref-cmo0.5thresh.rds')
+
+#(7)normalize data
+data_sub <- NormalizeData(data_sub, normalization.method="LogNormalize", scale.factor=10000)
+
+#(8)find variable features
+data_sub <- FindVariableFeatures(data_sub, selection.method="vst", nfeatures=2000)
+LabelPoints(plot=VariableFeaturePlot(data_sub),
+            points=head(VariableFeatures(data_sub),10),
+            repel=TRUE)
+
+#(9)scale data
+data_sub <- ScaleData(data_sub, features=rownames(data_sub))
+
+#(10)pca
+data_sub <- RunPCA(data_sub,
+                   #features=VariableFeatures(data_sub),
+                   features=rownames(data_sub),
+                   npcs=50)
+
+VizDimLoadings(data_sub, dims=1:2, reduction="pca")
+DimPlot(data_sub, dims=1:2, reduction="pca")
+DimHeatmap(data_sub, dims=1, cells=500, balanced=TRUE)
+ElbowPlot(data_sub, ndims=50)
+
+#(11)unsupervised cell clustering
+data_sub <- FindNeighbors(data_sub, dims=1:50)
+data_sub <- FindClusters(data_sub, resolution=0.05)
+table(data_sub@meta.data$seurat_clusters)
+
+#(12)umap
+data_sub <- RunUMAP(data_sub, dims=1:50)
+DimPlot(data_sub, reduction="umap", group.by="CellPlex_HumanRef_0.5")
+DimPlot(data_sub, reduction="umap", group.by="seurat_clusters")
+DimPlot(data_sub, reduction="umap", group.by="Sample")
+DimPlot(data_sub, reduction="umap", group.by="Time")
+
+#(13)examine biomarkers
+VlnPlot(data_sub, features=c("COL2A1","SOX9","ACAN"), group.by="Time")
+FeaturePlot(data_sub, features=c("COL2A1","SOX9","ACAN"))
+
+Idents(data_sub) <- "Time"
+data.markers <- FindAllMarkers(data_sub, only.pos=TRUE, min.pct=0.25, logfc.threshold=0.25)
+data.markers %>%
+    group_by(cluster) %>%
+    slice_max(n=2, order_by=avg_log2FC)
+top10 <-
+  data.markers %>%
+    group_by(cluster) %>%
+    top_n(n=10, wt=avg_log2FC)
+DoHeatmap(data_sub, features=top10$gene) + NoLegend()
+
+```
