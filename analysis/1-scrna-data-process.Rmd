@@ -534,6 +534,28 @@ count(barcode_assign_b2, ComboRef_0.6)
 
 Save CMO assignment data.
 
+Batch 1
+* CMO301 = H1_C1_d00
+* CMO302 = H1_C1_d0
+* CMO303 = H1_C1_m_d7
+* CMO304 = H1_C1_m_d14
+* CMO305 = H1_C1_c_d7
+* CMO306 = H1_C1_c_d14
+* CMO307 = H2_C4_d00
+* CMO308 = H2_C4_d0
+* CMO309 = H2_C4_m_d7,
+* CMO310 = H2_C4_m_d14
+* CMO311 = H2_C4_c_d7
+* CMO312 = H2_C4_c_d14
+
+Batch 2
+* CMO301 = H5_C5_d0
+* CMO302 = H5_C5_c_d7
+* CMO303 = H5_C5_c_d14
+* CMO304 = H3_C2_d0
+* CMO305 = H3_C2_c_d7
+* CMO306 = H3_C2_c_d14
+
 ```{r}
 
 saveRDS(barcode_assign_b1, file="./data/cmo_barcode_assign_batch1.rds")
@@ -544,57 +566,114 @@ saveRDS(barcode_assign_b2, file="./data/cmo_barcode_assign_batch2.rds")
 
 ## Examine species assignments
 
+..
+..
+..
+RESOLVE MISSING GEM CLASSIFICATION.CSV
+..
+..
+..
+
 ```{r assess species assignments, eval=FALSE, echo=TRUE}
+
+batch <- c("batch1","batch2")
+sample_tot <- c("H1_C1_d00","H1_C1_d0","H1_C1_m_d7","H1_C1_m_d14","H1_C1_c_d7","H1_C1_c_d14",
+                "H2_C4_d00","H2_C4_d0","H2_C4_m_d7","H2_C4_m_d14","H2_C4_c_d7","H2_C4_c_d14",
+                "H5_C5_d0","H5_C5_c_d14","H3_C2_d0","H3_C2_c_d7","H3_C2_c_d14")
+#excluded "H5_C5_c_d7" temporarily because there is no gem_classification.csv file
 
 #Load species assignments
 spp <- data.frame()
 i <- 1
-while (i <= length(batch$Sample_Name_at_Core)) {
+while (i <= length(batch)) {
   
   print(i)
   
-  #Define directory containing data from one collection
-  dir_data <- paste0('./../scRNA/cellranger-data-full/cellranger-data-HumanOrthoV2_and_ChimpOrthoV2/',batch$Sample_Name_at_Core[i],'/outs/analysis/')
-  #dir_data <- paste0('./../scRNA/cellranger-data-full/cellranger-data-HumanOrthoV2_and_ChimpOrthoV2/GHO-3/outs/analysis/')
+  dir <- paste0('./../scRNA/human_chimp_chondro_time_',batch[i],'_hc/outs/per_sample_outs/')
   
-  #Load summary metrics from one collection
-  temp <- read.csv(file=paste0(dir_data,'gem_classification.csv'))
+  if(batch[i]=="batch1") { sample_sub <- sample_tot[1:12] }
+  #if(batch[i]=="batch2") { sample_sub <- sample_tot[13:18] }
+  if(batch[i]=="batch2") { sample_sub <- sample_tot[13:17] }
   
-  #Process cellranger metrics
-  temp$barcode <- sapply(temp$barcode, gsub, pattern="-1", replacement="")
-  temp$call <- sapply(temp$call, gsub, pattern="HumanOrthoV2", replacement="Human")
-  temp$call <- sapply(temp$call, gsub, pattern="ChimpOrthoV2", replacement="Chimp")
-  temp$Collection.Name <- batch$Sample_Name_at_Core[i]
+  j <- 1
   
-  #Determine new species assignments
-
-  #calculate total number of umis
-  temp$TotalOrthoV2 <- temp$HumanOrthoV2 + temp$ChimpOrthoV2
+  while (j <= length(sample_sub)) {
+    
+    print(paste0("-",j))
   
-  #calculate ratio of human umis to total umis
-  temp$RatioOrthoV2 <- temp$HumanOrthoV2 / temp$TotalOrthoV2
+    #Define directory containing data from one collection
+    dir_data <- paste0(dir,sample_sub[j],'/count/analysis/')
+    
+    #Load summary metrics from one collection
+    temp <- read.csv(file=paste0(dir_data,'gem_classification.csv'))
+    
+    #Process cellranger metrics
+    temp$barcode <- sapply(temp$barcode, gsub, pattern="-1", replacement="")
+    temp$call <- sapply(temp$call, gsub, pattern="HumanOrthoV2", replacement="Human")
+    temp$call <- sapply(temp$call, gsub, pattern="ChimpOrthoV2", replacement="Chimp")
+    temp$Collection.Name <- sample_sub[j]
+    
+    #Determine new species assignments
   
-  #define RatioOrthoV2 cutoffs
-  c_cutoff <- 0.1
-  h_cutoff <- 0.9
+    #calculate total number of umis
+    temp$TotalOrthoV2 <- temp$HumanOrthoV2 + temp$ChimpOrthoV2
+    
+    #calculate ratio of human umis to total umis
+    temp$RatioOrthoV2 <- temp$HumanOrthoV2 / temp$TotalOrthoV2
+    
+    #define RatioOrthoV2 cutoffs
+    c_cutoff <- 0.1
+    h_cutoff <- 0.9
+    
+    #assign new human/chimp cells
+    temp$NEWcall <- "Multiplet"
+    temp$NEWcall[which(temp$RatioOrthoV2>=h_cutoff)] <- "Human"
+    temp$NEWcall[which(temp$RatioOrthoV2<=c_cutoff)] <- "Chimp"
+    
+    #add batch information
+    temp$batch <- batch[i]
+    
+    #Save revised csv
+    write.csv(temp,file=paste0(dir,sample_sub[j],'/count/analysis/gem_classification_GHedit.csv'))
   
-  #assign new human/chimp cells
-  temp$NEWcall <- "Multiplet"
-  temp$NEWcall[which(temp$RatioOrthoV2>=h_cutoff)] <- "Human"
-  temp$NEWcall[which(temp$RatioOrthoV2<=c_cutoff)] <- "Chimp"
   
-  #Save revised csv
-  write.csv(temp,file=paste0('./../scRNA/cellranger-data-full/cellranger-data-HumanOrthoV2_and_ChimpOrthoV2/',batch$Sample_Name_at_Core[i],'/outs/analysis/gem_classification_GHedit.csv'))
-  #write.csv(temp,file=paste0('./../scRNA/cellranger-data-full/cellranger-data-HumanOrthoV2_and_ChimpOrthoV2/GHO-3/outs/analysis/gem_classification_GHedit.csv'))
-
-  #Add data to dataframe
-  spp <- rbind(spp,temp)
+    #Add data to dataframe
+    spp <- rbind(spp,temp)
+    
+    j <- j+1
+  
+  }
+  
   i <- i+1
 }
 rm(dir_data,temp)
 
 ```
 
+Do not use new call data right now, as it looks worse than standard cellranger results.
+
+..
+..
+..
+COME BACK AND DECIDE ON THIS
+..
+..
+..
+
+```{r}
+
+count(spp,call)
+#count(spp,NEWcall)
+
+```
+
+Save species assignment data
+
+```{r}
+
+saveRDS(spp, file="./data/spp_assign.rds")
+
+```
 
 
 ***UPDATE FROM HERE***
@@ -608,11 +687,11 @@ Compile 10X data using seurat.
 Each dataset being evaluated comprises gene count data that were seperately calculated using both the hg38 human genome and the panTro6 chimpanzee genome, as well as the corresponding ortho-exon annotation in cellranger. Species-specific assignments were determined using human-chimpanzee genome combination with ortho-exon annotation.
 
 ```{bash, eval=FALSE, echo=TRUE}
-#easties to run these scripts on the cluster
-cd /project2/gilad/ghousman/skeletal-human-chimp/human-chimp-skeletal-scRNA
-sinteractive --mem=24g --time=12:00:00 --partition=broadwl
-module load R/3.6.1
-R
+##easties to run these scripts on the cluster
+#cd /project2/gilad/ghousman/skeletal-human-chimp/human-chimp-skeletal-scRNA
+#sinteractive --mem=24g --time=12:00:00 --partition=broadwl
+#module load R/4.2.0
+#R
 ```
 
 ```{r load libraries, eval=FALSE, echo=TRUE}
@@ -630,12 +709,19 @@ library(RColorBrewer)
 ```{r load batch information, eval=FALSE, echo=TRUE}
 
 #Load batch info
-batch <- read.csv(file='./data/scrna-batch.csv', header=TRUE, sep=",")
+#batch <- read.csv(file='./data/scrna-batch.csv', header=TRUE, sep=",")
 
 #batch <- as.data.frame(t(c("1-C","1","Chondrocyte","GHO-3","H1-C","H23555","M",22,"C1-C","C8861","M",16)))
 #colnames(batch) <- c("Pooled_Sample_Name","Batch","Cell_Type","Sample_Name_at_Core",
 #                     "Human_Sample_in_Pool","Human_Individual_in_Pool","Human_Sex_in_Pool","Human_Age_in_Pool",
 #                     "Chimp_Sample_in_Pool","Chimp_Individual_in_Pool","Chimp_Sex_in_Pool","Chimp_Age_in_Pool")
+
+batch <- c("batch1","batch2")
+sample_tot <- c("H1_C1_d00","H1_C1_d0","H1_C1_m_d7","H1_C1_m_d14","H1_C1_c_d7","H1_C1_c_d14",
+                "H2_C4_d00","H2_C4_d0","H2_C4_m_d7","H2_C4_m_d14","H2_C4_c_d7","H2_C4_c_d14",
+                "H5_C5_d0","H5_C5_c_d14","H3_C2_d0","H3_C2_c_d7","H3_C2_c_d14")
+#excluded "H5_C5_c_d7" temporarily because there is no gem_classification.csv file
+
 
 ```
 
@@ -644,21 +730,23 @@ batch <- read.csv(file='./data/scrna-batch.csv', header=TRUE, sep=",")
 
 #Isolate human and chimp cells for each collection
 i <- 1
-while (i <= length(batch$Sample_Name_at_Core)) {
+while (i <= length(batch)) {
 
-  print(paste0("Processing ",batch$Sample_Name_at_Core[i]))
+  print(paste0("Processing ",batch[i]))
   
   #(0)define directory
-    dir_h.data <- paste0('./../scRNA/cellranger-data-full/cellranger-data-HumanOrthoV2/',batch$Sample_Name_at_Core[i],'/outs')
-    dir_c.data <- paste0('./../scRNA/cellranger-data-full/cellranger-data-ChimpOrthoV2/',batch$Sample_Name_at_Core[i],'/outs')
+    dir_h.data <- paste0('./../scRNA/human_chimp_chondro_time_',batch[i],'_h/outs/multi/count')
+    dir_c.data <- paste0('./../scRNA/human_chimp_chondro_time_',batch[i],'_c/outs/multi/count')
     
   #(1)load data
+    print("Loading data")
     h.data <- Read10X(data=paste0(dir_h.data,"/raw_feature_bc_matrix"))
     c.data <- Read10X(data=paste0(dir_c.data,"/raw_feature_bc_matrix"))
     
   #(2)create seurat objects
-    h.dat <- CreateSeuratObject(counts=h.data)
-    c.dat <- CreateSeuratObject(counts=c.data)
+    print("Making seurat object")
+    h.dat <- CreateSeuratObject(counts=h.data$`Gene Expression`)
+    c.dat <- CreateSeuratObject(counts=c.data$`Gene Expression`)
     
   #(3)view details of seurat objects
     h.dat #19399 features, 6794880 samples
@@ -668,30 +756,51 @@ while (i <= length(batch$Sample_Name_at_Core)) {
     rm(h.data,c.data)
   
   #(5)add species assignments to data
-    dir_data <- paste0('./../scRNA/cellranger-data-full/cellranger-data-HumanOrthoV2_and_ChimpOrthoV2/',batch$Sample_Name_at_Core[i],'/outs/analysis/')
+    print("Adding species assignments")
+    #dir_data <- paste0('./../scRNA/cellranger-data-full/cellranger-data-HumanOrthoV2_and_ChimpOrthoV2/',batch$Sample_Name_at_Core[i],'/outs/analysis/')
 
     #Load summary metrics
-    temp <- read.csv(file=paste0(dir_data,'gem_classification_GHedit.csv'))
+    #temp <- read.csv(file=paste0(dir_data,'gem_classification_GHedit.csv'))
 
-    m <- match(rownames(h.dat@meta.data),temp$barcode)
-    if(any(is.na(m))) cat("Not all barcodes are in data.\n")
-    h.dat <- AddMetaData(h.dat, temp[m,]$NEWcall, col.name="Species")
+    #m <- match(rownames(h.dat@meta.data),temp$barcode)
+    #if(any(is.na(m))) cat("Not all barcodes are in data.\n")
+    #h.dat <- AddMetaData(h.dat, temp[m,]$NEWcall, col.name="Species")
   
-    m <- match(rownames(c.dat@meta.data),temp$barcode)
+    #m <- match(rownames(c.dat@meta.data),temp$barcode)
+    #if(any(is.na(m))) cat("Not all barcodes are in data.\n")
+    #c.dat <- AddMetaData(c.dat, temp[m,]$NEWcall, col.name="Species")
+    
+    temp_barcode <- sapply(rownames(h.dat@meta.data), gsub, pattern="-1", replacement="")
+    
+    m <- match(sapply(rownames(h.dat@meta.data),
+                      gsub, pattern="-1", replacement=""),
+               spp$barcode[which(spp$batch==batch[i])])
     if(any(is.na(m))) cat("Not all barcodes are in data.\n")
-    c.dat <- AddMetaData(c.dat, temp[m,]$NEWcall, col.name="Species")
+    h.dat <- AddMetaData(h.dat, spp[m,]$call, col.name="Species")
+    #h.dat <- AddMetaData(h.dat, spp[m,]$NEWcall, col.name="Species_New")
 
+    m <- match(sapply(rownames(c.dat@meta.data),
+                      gsub, pattern="-1", replacement=""),
+               spp$barcode[which(spp$batch==batch[i])])
+    if(any(is.na(m))) cat("Not all barcodes are in data.\n")
+    c.dat <- AddMetaData(c.dat, spp[m,]$call, col.name="Species")
+    #c.dat <- AddMetaData(c.dat, spp[m,]$NEWcall, col.name="Species_New")
+    
   #(6)view details of species assignments
     table(h.dat@meta.data$Species, useNA="always")
     table(c.dat@meta.data$Species, useNA="always")
+    #table(h.dat@meta.data$Species_New, useNA="always")
+    #table(c.dat@meta.data$Species_New, useNA="always")
   
   #(7)subset data to only include human and chimp cells/genes
+    print("Subsetting data")
     h.dat.spp <- subset(h.dat, subset=Species=="Human")
     c.dat.spp <- subset(c.dat, subset=Species=="Chimp")
  
   #(8)create merged object
+    print("Merging and saving data")
     h.c.dat.spp <- merge(h.dat.spp,c.dat.spp)
-    saveRDS(h.c.dat.spp, file=paste0('./data/cellranger-data-full/h.c.dat.spp.',batch$Sample_Name_at_Core[i],'.rds'))
+    saveRDS(h.c.dat.spp, file=paste0('./data/h.c.dat.spp.',batch[i],'.rds'))
 
   #(9)remove unnecessary variables
     rm(h.dat,c.dat,h.dat.spp,c.dat.spp)
