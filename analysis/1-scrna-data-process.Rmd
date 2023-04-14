@@ -540,6 +540,15 @@ Cell Assignments Singlets
 * Batch 1: 31649 (vs. 33297 using human reference / 32182 using chimp reference)
 * Batch 2:  5668 (vs.  4245 using human reference /  3693 using chimp reference)
 
+..
+..
+..
+CANNOT USE 0.6 UNTIL CELLRANGER IS RE-RUN
+USE 0.9 THRESHOLD TEMPORARILY
+..
+..
+..
+
 ```{r}
 
 dim(barcode_assign_b1)
@@ -669,6 +678,7 @@ while (i <= length(batch)) {
   i <- i+1
 }
 rm(dir_data,temp)
+rm(h_cutoff,c_cutoff)
 
 ```
 
@@ -696,10 +706,6 @@ Save species assignment data
 saveRDS(spp, file="./data/spp_assign.rds")
 
 ```
-
-
-***UPDATE FROM HERE***
-
 
 
 ### Processing count matrices
@@ -744,9 +750,7 @@ sample_tot <- c("H1_C1_d00","H1_C1_d0","H1_C1_m_d7","H1_C1_m_d14","H1_C1_c_d7","
                 "H5_C5_d0","H5_C5_c_d14","H3_C2_d0","H3_C2_c_d7","H3_C2_c_d14")
 #excluded "H5_C5_c_d7" temporarily because there is no gem_classification.csv file
 
-
 ```
-
 
 ```{r process scRNA data - isolate human and chimp cells, eval=FALSE, echo=TRUE}
 
@@ -771,8 +775,8 @@ while (i <= length(batch)) {
     c.dat <- CreateSeuratObject(counts=c.data$`Gene Expression`)
     
   #(3)view details of seurat objects
-    h.dat #19399 features, 6794880 samples
-    c.dat #19399 features, 6794880 samples
+    h.dat #19397 features, 3274414 samples (batch 1) / 2496148 samples (batch 2)
+    c.dat #19397 features, 3274414 samples (batch 1) / 2496148 samples (batch 2)
     
   #(4)clear raw data from workspace
     rm(h.data,c.data)
@@ -832,6 +836,10 @@ while (i <= length(batch)) {
   
 }
 
+rm(i,j,m)
+rm(sample_sub,temp_barcode)
+rm(h.c.dat.spp)
+
 ```
 
 Add metadata to count matrices.
@@ -840,27 +848,27 @@ Add metadata to count matrices.
 
 #Read in files
 data <- list()
-for (i in 1:length(batch$Sample_Name_at_Core)) {
+for (i in 1:length(batch)) {
   print(i)
-  data[[i]] <- readRDS(paste0("./data/cellranger-data-full/h.c.dat.spp.",batch$Sample_Name_at_Core[i],".rds"))
+  data[[i]] <- readRDS(paste0("./data/h.c.dat.spp.",batch[i],".rds"))
 }
 
-#Identify mitochondrial genes (should be 12 genes total) and add percent of mitochondrial reads vs. total reads
+#Identify mitochondrial genes (should be 11 genes total) and add percent of mitochondrial reads vs. total reads
 #which(sapply(data[[i]]@assays$RNA@counts@Dimnames[[1]], stri_count_regex, pattern="MT-")==1)
-#MT-CO2   16608
-#MT-CYB   16616
-#MT-ND2   16635
-#MT-ND5   16643
-#MT-CO1   16654
-#MT-ND3   16676
-#MT-ND4   16701
-#MT-ND1   16703
-#MT-ATP6  16709
-#MT-CO3   16732
-#MT-ND4L  17250
-#MT-ATP8  17689
-#INMT-MINDY4  18276 - not actually a mitochondrial gene
-mito <- c("MT-ATP6","MT-ATP8","MT-CO1","MT-CO2","MT-CO3","MT-CYB","MT-ND1","MT-ND2","MT-ND3","MT-ND4","MT-ND4L","MT-ND5")
+#MT-CO2   16579
+#MT-ND2   16605
+#MT-ND5   16613
+#MT-CO1   16624
+#MT-ND3   16646
+#MT-ND4   16671
+#MT-ND1   16673
+#MT-ATP6  16679
+#MT-CO3   16701
+#MT-ND4L  17416
+#MT-ATP8  17848
+#INMT-MINDY4  18503 --- not actually a mitochondrial gene
+#MT-CYB             --- not in this dataset?
+mito <- c("MT-ATP6","MT-ATP8","MT-CO1","MT-CO2","MT-CO3","MT-ND1","MT-ND2","MT-ND3","MT-ND4","MT-ND4L","MT-ND5")
 for (i in 1:length(data)) { data[[i]]$percent.mt <- PercentageFeatureSet(data[[i]], features=mito) }
 
 ```
@@ -868,146 +876,16 @@ for (i in 1:length(data)) { data[[i]]$percent.mt <- PercentageFeatureSet(data[[i
 ```{r load files with other relevant metadata, eval=FALSE, echo=TRUE}
 
 #Load batch data
-batch <- read.csv(file='./data/scrna-batch-reformat.csv', header=TRUE, sep=",")
-batch[,c(1:7,9:10,21,24:25)] <- lapply(batch[,c(1:7,9:10,21,24:25)], function(x) as.character(x)) #names, sex, dates
-batch[,c(8,11:20,22:23,25:26)] <- lapply(batch[,c(8,11:20,22:23,25:26)], function(x) as.numeric(as.character(x))) #numeric values only
+#batch <- read.csv(file='./data/scrna-batch-reformat.csv', header=TRUE, sep=",")
+#batch[,c(1:7,9:10,21,24:25)] <- lapply(batch[,c(1:7,9:10,21,24:25)], function(x) as.character(x)) #names, sex, dates
+#batch[,c(8,11:20,22:23,25:26)] <- lapply(batch[,c(8,11:20,22:23,25:26)], function(x) as.numeric(as.character(x))) #numeric values only
 
-#Load FACS validation data
-fcs <- read.csv(file='./data/facs-MSC-collection-summary-total.csv', header=TRUE, sep=",")
-fcs <- fcs[,c(2,6,29,31,33,35)]
-fcs$Sample_Details <- factor(fcs$Sample_Details,
-                             levels=c("iPSC - control","iPSC - cocktail","MSC - cocktail"),
-                             labels=c("iPSCcontrol","iPSCcocktail","MSCcocktail"))
-fcs <- split(fcs, fcs$Sample_Details)
-fcs$iPSCcontrol$Abbr_Details <- factor(fcs$iPSCcontrol$Abbr_Details,
-                                       levels=c("C1 iPSC - control",
-                                                "C1-r2 iPSC - control",
-                                                "C2 iPSC - control",
-                                                "C3 iPSC - control",
-                                                "C4 iPSC - control",
-                                                "C5 iPSC - control",
-                                                "C6 iPSC - control",
-                                                "H1 iPSC - control",
-                                                "H1-r2 iPSC - control",
-                                                "H2 iPSC - control",
-                                                "H3 iPSC - control",
-                                                "H4 iPSC - control",
-                                                "H5 iPSC - control",
-                                                "H6 iPSC - control"),
-                                       labels=c("C1-I","C1-I-r2","C2-I","C3-I","C4-I","C5-I","C6-I",
-                                                "H1-I","H1-I-r2","H2-I","H3-I","H4-I","H5-I","H6-I"))
-fcs$iPSCcocktail$Abbr_Details <- factor(fcs$iPSCcocktail$Abbr_Details,
-                                        levels=c("C1 iPSC - cocktail",
-                                                 "C1-r2 iPSC - cocktail",
-                                                 "C2 iPSC - cocktail",
-                                                 "C3 iPSC - cocktail",
-                                                 "C4 iPSC - cocktail",
-                                                 "C5 iPSC - cocktail",
-                                                 "C6 iPSC - cocktail",
-                                                 "H1 iPSC - cocktail",
-                                                 "H1-r2 iPSC - cocktail",
-                                                 "H2 iPSC - cocktail",
-                                                 "H3 iPSC - cocktail",
-                                                 "H4 iPSC - cocktail",
-                                                 "H5 iPSC - cocktail",
-                                                 "H6 iPSC - cocktail"),
-                                       labels=c("C1-I","C1-I-r2","C2-I","C3-I","C4-I","C5-I","C6-I",
-                                                "H1-I","H1-I-r2","H2-I","H3-I","H4-I","H5-I","H6-I"))
-fcs$MSCcocktail$Abbr_Details <- factor(fcs$MSCcocktail$Abbr_Details,
-                                       levels=c("C1 MSC - cocktail",
-                                                "C1-r2 MSC - cocktail",
-                                                "C2 MSC - cocktail",
-                                                "C3 MSC - cocktail",
-                                                "C4 MSC - cocktail",
-                                                "C5 MSC - cocktail",
-                                                "C6 MSC - cocktail",
-                                                "H1 MSC - cocktail",
-                                                "H1-r2 MSC - cocktail",
-                                                "H2 MSC - cocktail",
-                                                "H3 MSC - cocktail",
-                                                "H4 MSC - cocktail",
-                                                "H5 MSC - cocktail",
-                                                "H6 MSC - cocktail"),
-                                       labels=c("C1-M","C1-M-r2","C2-M","C3-M","C4-M","C5-M","C6-M",
-                                                "H1-M","H1-M-r2","H2-M","H3-M","H4-M","H5-M","H6-M"))
-fcs.ctrl <- aggregate(. ~ Abbr_Details, fcs$iPSCcontrol, mean) #calculate averages
-fcs.ipsc <- aggregate(. ~ Abbr_Details, fcs$iPSCcocktail, mean) #calculate averages
-fcs.msc  <- aggregate(. ~ Abbr_Details, fcs$MSCcocktail, mean) #calculate averages
-fcs.ctrl$Abbr_Details <- as.character(fcs.ctrl$Abbr_Details)
-fcs.ipsc$Abbr_Details <- as.character(fcs.ipsc$Abbr_Details)
-fcs.msc$Abbr_Details <- as.character(fcs.msc$Abbr_Details)
-rm(fcs)
+#Load CMO assignment data
+barcode_assign_b1 <- readRDS("./data/cmo_barcode_assign_batch1.rds")
+barcode_assign_b2 <- readRDS("./data/cmo_barcode_assign_batch2.rds")
 
-#Load Alizarin Red data
-alz <- read.csv(file='./data/alizarin-red-quant-total.csv', header=TRUE, sep=",")
-alz <- alz[c(1:8,13:20,25:60,65:72,77:140),] #remove C1-6W, H1-6W, H3-1A
-alz <- alz[c(1:8,10:11,14:18,20:124),] #remove outliers
-alz$Sample <- factor(alz$Sample, 
-                     levels = c("C1-M","C1-O 12w",
-                                "CR-M","CR-O",
-                                "C2-M","C2-O",
-                                "C3-M","C3-O",
-                                "C4-M","C4-O",
-                                "C5-M","C5-O",
-                                "C6-M","C6-O",
-                                "H1-M","H1-O 12w",
-                                "HR-M","HR-O",
-                                "H2-M","H2-O",
-                                "H3-M(1)","H3-O(1)",
-                                "H4-M","H4-O",
-                                "H5-M","H5-O",
-                                "H6-M","H6-O"),
-                     labels = c("C1-M","C1-O",
-                                "C1-M-r2","C1-O-r2",
-                                "C2-M","C2-O",
-                                "C3-M","C3-O",
-                                "C4-M","C4-O",
-                                "C5-M","C5-O",
-                                "C6-M","C6-O",
-                                "H1-M","H1-O",
-                                "H1-M-r2","H1-O-r2",
-                                "H2-M","H2-O","
-                                H3-M","H3-O",
-                                "H4-M","H4-O",
-                                "H5-M","H5-O",
-                                "H6-M","H6-O")) 
-alz <- aggregate(Absorbance_Value ~ Sample, alz, mean) #calculate averages
-alz$Sample <- as.character(alz$Sample)
-
-#Load Oil Red data
-oil <- read.csv(file='./data/oil-red-quant-total.csv', header=TRUE, sep=",")
-oil <- oil[c(1:63,65:91,93:112),] #remove outliers
-oil$Sample <- factor(oil$Sample, 
-                     levels = c("C1-M","C1-A",
-                                "CR-M","CR-A",
-                                "C2-M","C2-A",
-                                "C3-M","C3-A",
-                                "C4-M","C4-A",
-                                "C5-M","C5-A",
-                                "C6-M","C6-A",
-                                "H1-M","H1-A",
-                                "HR-M","HR-A",
-                                "H2-M","H2-A",
-                                "H3-M","H3-A",
-                                "H4-M","H4-A",
-                                "H5-M","H5-A",
-                                "H6-M","H6-A"),
-                     labels = c("C1-M","C1-O",
-                                "C1-M-r2","C1-O-r2",
-                                "C2-M","C2-O",
-                                "C3-M","C3-O",
-                                "C4-M","C4-O",
-                                "C5-M","C5-O",
-                                "C6-M","C6-O",
-                                "H1-M","H1-O",
-                                "H1-M-r2","H1-O-r2",
-                                "H2-M","H2-O",
-                                "H3-M","H3-O",
-                                "H4-M","H4-O",
-                                "H5-M","H5-O",
-                                "H6-M","H6-O")) 
-oil <- aggregate(Absorbance_Value ~ Sample, oil, mean) #calculate averages
-oil$Sample <- as.character(oil$Sample)
+rownames(barcode_assign_b1) <- barcode_assign_b1$Barcode
+rownames(barcode_assign_b2) <- barcode_assign_b2$Barcode
 
 ```
 
@@ -1018,356 +896,183 @@ oil$Sample <- as.character(oil$Sample)
 #collection
 for (i in 1:length(data)) { data[[i]]$Collection <- i }
 
-#cell type anticipated based on stage of differentiation at collection
-for (i in c(1,4,7,10,13,16,19)) { data[[i]]$Cell.Type <- "iPSC" }
-for (i in c(2,5,8,11,14,17,20)) { data[[i]]$Cell.Type <- "MSC" }
-for (i in c(3,6,9,12,15,18,21)) { data[[i]]$Cell.Type <- "Osteogenic" }
+#cmo assignments
+data[[1]] <- AddMetaData(data[[1]], barcode_assign_b1)
+data[[2]] <- AddMetaData(data[[2]], barcode_assign_b2)
+
+##cell type anticipated based on stage of differentiation at collection
+#for (i in c(1,4,7,10,13,16,19)) { data[[i]]$Cell.Type <- "iPSC" }
+#for (i in c(2,5,8,11,14,17,20)) { data[[i]]$Cell.Type <- "MSC" }
+#for (i in c(3,6,9,12,15,18,21)) { data[[i]]$Cell.Type <- "Osteogenic" }
 
 #individuals pooled together in collection
-for (i in 1:6) { data[[i]]$Pair <- "H1+C1" }
-for (i in 7:9) { data[[i]]$Pair <- "H2+C2" }
-for (i in 10:12) { data[[i]]$Pair <- "H3+C3" }
-for (i in 13:15) { data[[i]]$Pair <- "H4+C4" }
-for (i in 16:18) { data[[i]]$Pair <- "H5+C5" }
-for (i in 19:21) { data[[i]]$Pair <- "H6+C6" }
+for (i in 1:length(data)) { data[[i]]$Pair <- NA }
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.9=="CMO301")] <- "H1+C1"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.9=="CMO302")] <- "H1+C1"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.9=="CMO303")] <- "H1+C1"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.9=="CMO304")] <- "H1+C1"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.9=="CMO305")] <- "H1+C1"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.9=="CMO306")] <- "H1+C1"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.9=="CMO307")] <- "H2+C4"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.9=="CMO308")] <- "H2+C4"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.9=="CMO309")] <- "H2+C4"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.9=="CMO310")] <- "H2+C4"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.9=="CMO311")] <- "H2+C4"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.9=="CMO312")] <- "H2+C4"
+data[[2]]$Pair[which(data[[2]]$ComboRef_0.9=="CMO301")] <- "H5+C5"
+data[[2]]$Pair[which(data[[2]]$ComboRef_0.9=="CMO302")] <- "H5+C5"
+data[[2]]$Pair[which(data[[2]]$ComboRef_0.9=="CMO303")] <- "H5+C5"
+data[[2]]$Pair[which(data[[2]]$ComboRef_0.9=="CMO304")] <- "H3+C2"
+data[[2]]$Pair[which(data[[2]]$ComboRef_0.9=="CMO305")] <- "H3+C2"
+data[[2]]$Pair[which(data[[2]]$ComboRef_0.9=="CMO306")] <- "H3+C2"
 
 #individual cell line used in collection
 for (i in 1:length(data)) { data[[i]]$Individual <- NA }
-for (i in 1:6) { data[[i]]$Individual[which(data[[i]]$Species=="Human")] <- "H1" }
-for (i in 1:6) { data[[i]]$Individual[which(data[[i]]$Species=="Chimp")] <- "C1" }
-for (i in 7:9) { data[[i]]$Individual[which(data[[i]]$Species=="Human")] <- "H2" }
-for (i in 7:9) { data[[i]]$Individual[which(data[[i]]$Species=="Chimp")] <- "C2" }
-for (i in 10:12) { data[[i]]$Individual[which(data[[i]]$Species=="Human")] <- "H3" }
-for (i in 10:12) { data[[i]]$Individual[which(data[[i]]$Species=="Chimp")] <- "C3" }
-for (i in 13:15) { data[[i]]$Individual[which(data[[i]]$Species=="Human")] <- "H4" }
-for (i in 13:15) { data[[i]]$Individual[which(data[[i]]$Species=="Chimp")] <- "C4" }
-for (i in 16:18) { data[[i]]$Individual[which(data[[i]]$Species=="Human")] <- "H5" }
-for (i in 16:18) { data[[i]]$Individual[which(data[[i]]$Species=="Chimp")] <- "C5" }
-for (i in 19:21) { data[[i]]$Individual[which(data[[i]]$Species=="Human")] <- "H6" }
-for (i in 19:21) { data[[i]]$Individual[which(data[[i]]$Species=="Chimp")] <- "C6" }
+data[[1]]$Individual[which(data[[1]]$Pair=="H1+C1" & data[[1]]$Species=="Human")] <- "H1"
+data[[1]]$Individual[which(data[[1]]$Pair=="H2+C4" & data[[1]]$Species=="Human")] <- "H2"
+data[[1]]$Individual[which(data[[1]]$Pair=="H1+C1" & data[[1]]$Species=="Chimp")] <- "C1"
+data[[1]]$Individual[which(data[[1]]$Pair=="H2+C4" & data[[1]]$Species=="Chimp")] <- "C4"
+data[[2]]$Individual[which(data[[2]]$Pair=="H5+C5" & data[[2]]$Species=="Human")] <- "H5"
+data[[2]]$Individual[which(data[[2]]$Pair=="H3+C2" & data[[2]]$Species=="Human")] <- "H3"
+data[[2]]$Individual[which(data[[2]]$Pair=="H5+C5" & data[[2]]$Species=="Chimp")] <- "C5"
+data[[2]]$Individual[which(data[[2]]$Pair=="H3+C2" & data[[2]]$Species=="Chimp")] <- "C2"
 
-#replicate in overall study design
-for (i in c(1:3,7:21)) { data[[i]]$Replicate <- "1" }
-for (i in 4:6) { data[[i]]$Replicate <- "2" }
+#full cell line name used in collection
+for (i in 1:length(data)) { data[[i]]$CellLine <- NA }
+data[[1]]$CellLine[which(data[[1]]$Individual=="H1")] <- "H23555"
+data[[1]]$CellLine[which(data[[1]]$Individual=="C1")] <- "C8861"
+data[[1]]$CellLine[which(data[[1]]$Individual=="H2")] <- "H20157"
+data[[1]]$CellLine[which(data[[1]]$Individual=="C4")] <- "C40210"
+data[[2]]$CellLine[which(data[[2]]$Individual=="H5")] <- "H21792"
+data[[2]]$CellLine[which(data[[2]]$Individual=="C5")] <- "C40280"
+data[[2]]$CellLine[which(data[[2]]$Individual=="H3")] <- "H28126"
+data[[2]]$CellLine[which(data[[2]]$Individual=="C2")] <- "C3647"
 
-#msc media
-for (i in c(1:3,7:12)) { data[[i]]$MSCmedia <- "3B" }
-for (i in c(4:6,13:21)) { data[[i]]$MSCmedia <- "2B" }
+#sex of cell line used in collection
+for (i in 1:length(data)) { data[[i]]$Sex <- NA }
+data[[1]]$Sex[which(data[[1]]$Individual=="H1")] <- "male"
+data[[1]]$Sex[which(data[[1]]$Individual=="C1")] <- "male"
+data[[1]]$Sex[which(data[[1]]$Individual=="H2")] <- "female"
+data[[1]]$Sex[which(data[[1]]$Individual=="C4")] <- "female"
+data[[2]]$Sex[which(data[[2]]$Individual=="H5")] <- "female"
+data[[2]]$Sex[which(data[[2]]$Individual=="C5")] <- "female"
+data[[2]]$Sex[which(data[[2]]$Individual=="H3")] <- "male"
+data[[2]]$Sex[which(data[[2]]$Individual=="C2")] <- "female"
+
+#age of sample source cell line was generated from
+for (i in 1:length(data)) { data[[i]]$Age <- NA }
+data[[1]]$Age[which(data[[1]]$Individual=="H1")] <- 22
+data[[1]]$Age[which(data[[1]]$Individual=="C1")] <- 16
+data[[1]]$Age[which(data[[1]]$Individual=="H2")] <- 23
+data[[1]]$Age[which(data[[1]]$Individual=="C4")] <- 14
+data[[2]]$Age[which(data[[2]]$Individual=="H5")] <- 20
+data[[2]]$Age[which(data[[2]]$Individual=="C5")] <- 17
+data[[2]]$Age[which(data[[2]]$Individual=="H3")] <- 21
+data[[2]]$Age[which(data[[2]]$Individual=="C2")] <- 9
+
+#stage of differentiation of cells in collection
+for (i in 1:length(data)) { data[[i]]$Stage <- NA }
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.9=="CMO301")] <- "d00"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.9=="CMO302")] <- "d0"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.9=="CMO303")] <- "d7-m"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.9=="CMO304")] <- "d14-m"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.9=="CMO305")] <- "d7-c"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.9=="CMO306")] <- "d14-c"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.9=="CMO307")] <- "d00"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.9=="CMO308")] <- "d0"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.9=="CMO309")] <- "d7-m"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.9=="CMO310")] <- "d14-m"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.9=="CMO311")] <- "d7-c"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.9=="CMO312")] <- "d14-c"
+data[[2]]$Stage[which(data[[2]]$ComboRef_0.9=="CMO301")] <- "d0"
+data[[2]]$Stage[which(data[[2]]$ComboRef_0.9=="CMO302")] <- "d7-c"
+data[[2]]$Stage[which(data[[2]]$ComboRef_0.9=="CMO303")] <- "d14-c"
+data[[2]]$Stage[which(data[[2]]$ComboRef_0.9=="CMO304")] <- "d0"
+data[[2]]$Stage[which(data[[2]]$ComboRef_0.9=="CMO305")] <- "d7-c"
+data[[2]]$Stage[which(data[[2]]$ComboRef_0.9=="CMO306")] <- "d14-c"
+
+#chondrogenic stage of differentiation of cells in collection
+for (i in 1:length(data)) { data[[i]]$ChondroStage <- NA }
+data[[1]]$ChondroStage[which(data[[1]]$Stage=="d00")] <- "Day 00"
+data[[1]]$ChondroStage[which(data[[1]]$Stage=="d0")] <- "Day 0"
+data[[1]]$ChondroStage[which(data[[1]]$Stage=="d7-c")] <- "Day 7"
+data[[1]]$ChondroStage[which(data[[1]]$Stage=="d14-c")] <- "Day 14"
+data[[2]]$ChondroStage[which(data[[2]]$Stage=="d0")] <- "Day 0"
+data[[2]]$ChondroStage[which(data[[2]]$Stage=="d7-c")] <- "Day 7"
+data[[2]]$ChondroStage[which(data[[2]]$Stage=="d14-c")] <- "Day 14"
+
+#mesensphere stage of differentiation of cells in collection
+for (i in 1:length(data)) { data[[i]]$MesenStage <- NA }
+data[[1]]$MesenStage[which(data[[1]]$Stage=="d00")] <- "Day 00"
+data[[1]]$MesenStage[which(data[[1]]$Stage=="d0")] <- "Day 0"
+data[[1]]$MesenStage[which(data[[1]]$Stage=="d7-m")] <- "Day 7"
+data[[1]]$MesenStage[which(data[[1]]$Stage=="d14-m")] <- "Day 14"
+data[[2]]$MesenStage[which(data[[2]]$Stage=="d0")] <- "Day 0"
+data[[2]]$MesenStage[which(data[[2]]$Stage=="d7-m")] <- "Day 7"
+data[[2]]$MesenStage[which(data[[2]]$Stage=="d14-m")] <- "Day 14"
 
 #abbreviation of sample name in collection
 for (i in 1:length(data)) { data[[i]]$Sample <- NA }
-for (i in 1:length(data)) { 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="H1" & data[[i]]$Replicate=="1")] <- "H1-I" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="H1" & data[[i]]$Replicate=="2")] <- "H1-I-r2" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="H2" & data[[i]]$Replicate=="1")] <- "H2-I" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="H3" & data[[i]]$Replicate=="1")] <- "H3-I" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="H4" & data[[i]]$Replicate=="1")] <- "H4-I" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="H5" & data[[i]]$Replicate=="1")] <- "H5-I" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="H6" & data[[i]]$Replicate=="1")] <- "H6-I"
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="C1" & data[[i]]$Replicate=="1")] <- "C1-I" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="C1" & data[[i]]$Replicate=="2")] <- "C1-I-r2" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="C2" & data[[i]]$Replicate=="1")] <- "C2-I" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="C3" & data[[i]]$Replicate=="1")] <- "C3-I" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="C4" & data[[i]]$Replicate=="1")] <- "C4-I" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="C5" & data[[i]]$Replicate=="1")] <- "C5-I" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="iPSC" & data[[i]]$Individual=="C6" & data[[i]]$Replicate=="1")] <- "C6-I" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="H1" & data[[i]]$Replicate=="1")] <- "H1-M" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="H1" & data[[i]]$Replicate=="2")] <- "H1-M-r2" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="H2" & data[[i]]$Replicate=="1")] <- "H2-M" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="H3" & data[[i]]$Replicate=="1")] <- "H3-M" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="H4" & data[[i]]$Replicate=="1")] <- "H4-M" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="H5" & data[[i]]$Replicate=="1")] <- "H5-M" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="H6" & data[[i]]$Replicate=="1")] <- "H6-M"
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="C1" & data[[i]]$Replicate=="1")] <- "C1-M" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="C1" & data[[i]]$Replicate=="2")] <- "C1-M-r2" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="C2" & data[[i]]$Replicate=="1")] <- "C2-M" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="C3" & data[[i]]$Replicate=="1")] <- "C3-M" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="C4" & data[[i]]$Replicate=="1")] <- "C4-M" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="C5" & data[[i]]$Replicate=="1")] <- "C5-M" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="MSC" & data[[i]]$Individual=="C6" & data[[i]]$Replicate=="1")] <- "C6-M" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="H1" & data[[i]]$Replicate=="1")] <- "H1-O" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="H1" & data[[i]]$Replicate=="2")] <- "H1-O-r2" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="H2" & data[[i]]$Replicate=="1")] <- "H2-O" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="H3" & data[[i]]$Replicate=="1")] <- "H3-O" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="H4" & data[[i]]$Replicate=="1")] <- "H4-O" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="H5" & data[[i]]$Replicate=="1")] <- "H5-O" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="H6" & data[[i]]$Replicate=="1")] <- "H6-O"
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="C1" & data[[i]]$Replicate=="1")] <- "C1-O" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="C1" & data[[i]]$Replicate=="2")] <- "C1-O-r2" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="C2" & data[[i]]$Replicate=="1")] <- "C2-O" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="C3" & data[[i]]$Replicate=="1")] <- "C3-O" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="C4" & data[[i]]$Replicate=="1")] <- "C4-O" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="C5" & data[[i]]$Replicate=="1")] <- "C5-O" 
-  data[[i]]$Sample[which(data[[i]]$Cell.Type=="Osteogenic" & data[[i]]$Individual=="C6" & data[[i]]$Replicate=="1")] <- "C6-O" 
-}
+data[[1]]$Sample <- paste0(data[[1]]$Individual,"-",data[[1]]$Stage)
+data[[2]]$Sample <- paste0(data[[2]]$Individual,"-",data[[2]]$Stage)
 
-samples <- c("C1-I","C1-I-r2","C2-I","C3-I","C4-I","C5-I","C6-I",
-             "H1-I","H1-I-r2","H2-I","H3-I","H4-I","H5-I","H6-I",
-             "C1-M","C1-M-r2","C2-M","C3-M","C4-M","C5-M","C6-M",
-             "H1-M","H1-M-r2","H2-M","H3-M","H4-M","H5-M","H6-M",
-             "C1-O","C1-O-r2","C2-O","C3-O","C4-O","C5-O","C6-O",
-             "H1-O","H1-O-r2","H2-O","H3-O","H4-O","H5-O","H6-O")
+#samples <- c("C1-I","C1-I-r2","C2-I","C3-I","C4-I","C5-I","C6-I",
+#             "H1-I","H1-I-r2","H2-I","H3-I","H4-I","H5-I","H6-I",
+#             "C1-M","C1-M-r2","C2-M","C3-M","C4-M","C5-M","C6-M",
+#             "H1-M","H1-M-r2","H2-M","H3-M","H4-M","H5-M","H6-M",
+#             "C1-O","C1-O-r2","C2-O","C3-O","C4-O","C5-O","C6-O",
+#             "H1-O","H1-O-r2","H2-O","H3-O","H4-O","H5-O","H6-O")
 
 #several details on cell line and collection
-for (i in 1:length(data)) { data[[i]]$Sex <- NA }
-for (i in 1:length(data)) { data[[i]]$Age <- NA }
-for (i in 1:length(data)) { data[[i]]$DateCollection <- NA }
-for (i in 1:length(data)) { data[[i]]$Number6W <- NA }
-for (i in 1:length(data)) { data[[i]]$PrewashCount <- NA }
-for (i in 1:length(data)) { data[[i]]$PrewashViability <- NA }
-for (i in 1:length(data)) { data[[i]]$PostwashCount <- NA }
-for (i in 1:length(data)) { data[[i]]$PostwashViability <- NA }
-for (i in 1:length(data)) { data[[i]]$PostmixCount <- NA }
-for (i in 1:length(data)) { data[[i]]$PostmixViability <- NA }
-for (i in 1:length(data)) { data[[i]]$DatecDNA <- NA }
-for (i in 1:length(data)) { data[[i]]$DateLibrary <- NA }
-for (i in 1:length(data)) { data[[i]]$SequencingBatch <- NA }
-for (i in 1:length(data)) { 
-  for(j in samples) {
-    if(j %in% batch$Sample_in_Pool) {
-      data[[i]]$Sex[which(data[[i]]$Sample==j)] <- batch$Sex_in_Pool[which(batch$Sample_in_Pool==j)]
-      data[[i]]$Age[which(data[[i]]$Sample==j)] <- batch$Age_in_Pool[which(batch$Sample_in_Pool==j)]
-      data[[i]]$DateCollection[which(data[[i]]$Sample==j)] <- batch$Date_of_10X_Collection[which(batch$Sample_in_Pool==j)]
-      data[[i]]$Number6W[which(data[[i]]$Sample==j)] <- batch$Number_of_6wells_Used[which(batch$Sample_in_Pool==j)]
-      data[[i]]$PrewashCount[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Count_Prewash[which(batch$Sample_in_Pool==j)]
-      data[[i]]$PrewashViability[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Viability_Prewash[which(batch$Sample_in_Pool==j)]
-      data[[i]]$PostwashCount[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Count_Postwash[which(batch$Sample_in_Pool==j)]
-      data[[i]]$PostwashViability[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Viability_Postwash[which(batch$Sample_in_Pool==j)]
-      data[[i]]$PostmixCount[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Count_Postwash_Postmix[which(batch$Sample_in_Pool==j)]
-      data[[i]]$PostmixViability[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Viability_Postwash_Postmix[which(batch$Sample_in_Pool==j)]
-      data[[i]]$DatecDNA[which(data[[i]]$Sample==j)] <- batch$Date_of_10X_cDNA_Synthesis[which(batch$Sample_in_Pool==j)]
-      data[[i]]$DateLibrary[which(data[[i]]$Sample==j)] <- batch$Date_of_10X_Library_Prep[which(batch$Sample_in_Pool==j)]
-      data[[i]]$SequencingBatch[which(data[[i]]$Sample==j)] <- batch$X10X_Sequencing_Pool[which(batch$Sample_in_Pool==j)]
-    }
-  }
-}
-
-#facs information (control)
-for (i in 1:length(data)) { data[[i]]$CD90_Control <- NA }
-for (i in 1:length(data)) { data[[i]]$CD73_Control <- NA }
-for (i in 1:length(data)) { data[[i]]$CD105_Control <- NA }
-for (i in 1:length(data)) { data[[i]]$CD45.CD34.CD11b.CD19.HLA.DR_Control <- NA }
-for (i in 1:length(data)) { 
-  for(j in samples) {
-    if(j %in% fcs.ctrl$Abbr_Details) {
-      data[[i]]$CD90_Control[which(data[[i]]$Sample==j)] <- fcs.ctrl$CD90_Percentage[which(fcs.ctrl$Abbr_Details==j)] 
-      data[[i]]$CD73_Control[which(data[[i]]$Sample==j)] <- fcs.ctrl$CD73_Percentage[which(fcs.ctrl$Abbr_Details==j)] 
-      data[[i]]$CD105_Control[which(data[[i]]$Sample==j)] <- fcs.ctrl$CD105_Percentage[which(fcs.ctrl$Abbr_Details==j)] 
-      data[[i]]$CD45.CD34.CD11b.CD19.HLA.DR_Control[which(data[[i]]$Sample==j)] <-
-        fcs.ctrl$CD45.CD34.CD11b.CD19.HLA.DR_Percentage[which(fcs.ctrl$Abbr_Details==j)]
-    }
-  }
-}
-
-#facs information (cocktail) 
-for (i in 1:length(data)) { data[[i]]$CD90 <- NA }
-for (i in 1:length(data)) { data[[i]]$CD73 <- NA }
-for (i in 1:length(data)) { data[[i]]$CD105 <- NA }
-for (i in 1:length(data)) { data[[i]]$CD45.CD34.CD11b.CD19.HLA.DR <- NA }
-for (i in 1:length(data)) { 
-  for(j in samples) {
-    if(j %in% fcs.ipsc$Abbr_Details) {
-      data[[i]]$CD90[which(data[[i]]$Sample==j)] <- fcs.ipsc$CD90_Percentage[which(fcs.ipsc$Abbr_Details==j)] 
-      data[[i]]$CD73[which(data[[i]]$Sample==j)] <- fcs.ipsc$CD73_Percentage[which(fcs.ipsc$Abbr_Details==j)] 
-      data[[i]]$CD105[which(data[[i]]$Sample==j)] <- fcs.ipsc$CD105_Percentage[which(fcs.ipsc$Abbr_Details==j)] 
-      data[[i]]$CD45.CD34.CD11b.CD19.HLA.DR[which(data[[i]]$Sample==j)] <- fcs.ipsc$CD45.CD34.CD11b.CD19.HLA.DR_Percentage[which(fcs.ipsc$Abbr_Details==j)]
-    }
-  }
-}
-for (i in 1:length(data)) { 
-  for(j in samples) {
-    if(j %in% fcs.msc$Abbr_Details) {
-      data[[i]]$CD90[which(data[[i]]$Sample==j)] <- fcs.msc$CD90_Percentage[which(fcs.msc$Abbr_Details==j)] 
-      data[[i]]$CD73[which(data[[i]]$Sample==j)] <- fcs.msc$CD73_Percentage[which(fcs.msc$Abbr_Details==j)] 
-      data[[i]]$CD105[which(data[[i]]$Sample==j)] <- fcs.msc$CD105_Percentage[which(fcs.msc$Abbr_Details==j)] 
-      data[[i]]$CD45.CD34.CD11b.CD19.HLA.DR[which(data[[i]]$Sample==j)] <- fcs.msc$CD45.CD34.CD11b.CD19.HLA.DR_Percentage[which(fcs.msc$Abbr_Details==j)]
-    }
-  }
-}
-
-#alizarin red data
-for (i in 1:length(data)) { data[[i]]$Alizarin <- NA }
-for (i in 1:length(data)) { 
-  for(j in samples) {
-    if(j %in% alz$Sample) {
-      data[[i]]$Alizarin[which(data[[i]]$Sample==j)] <- alz$Absorbance_Value[which(alz$Sample==j)]
-    }
-  }
-}
-
-#oil red data (put with MSCs and osteogenic cells)
-for (i in 1:length(data)) { data[[i]]$OilRed <- NA }
-for (i in 1:length(data)) { 
-  for(j in samples) {
-    if(j %in% oil$Sample) {
-      data[[i]]$OilRed[which(data[[i]]$Sample==j)] <- oil$Absorbance_Value[which(oil$Sample==j)]
-    }
-  }
-}
-  
-#cell classification information - stage of differentiation at collection
-for (i in c(1,4,7,10,13,16,19)) { data[[i]]$Stage <- "Time 0" }
-for (i in c(2,5,8,11,14,17,20)) { data[[i]]$Stage <- "Time 1" }
-for (i in c(3,6,9,12,15,18,21)) { data[[i]]$Stage <- "Time 2" }
+#for (i in 1:length(data)) { data[[i]]$DateCollection <- NA }
+#for (i in 1:length(data)) { data[[i]]$Number6W <- NA }
+#for (i in 1:length(data)) { data[[i]]$PrewashCount <- NA }
+#for (i in 1:length(data)) { data[[i]]$PrewashViability <- NA }
+#for (i in 1:length(data)) { data[[i]]$PostwashCount <- NA }
+#for (i in 1:length(data)) { data[[i]]$PostwashViability <- NA }
+#for (i in 1:length(data)) { data[[i]]$PostmixCount <- NA }
+#for (i in 1:length(data)) { data[[i]]$PostmixViability <- NA }
+#for (i in 1:length(data)) { data[[i]]$DatecDNA <- NA }
+#for (i in 1:length(data)) { data[[i]]$DateLibrary <- NA }
+#for (i in 1:length(data)) { data[[i]]$SequencingBatch <- NA }
+#for (i in 1:length(data)) { 
+#  for(j in samples) {
+#    if(j %in% batch$Sample_in_Pool) {
+#      data[[i]]$DateCollection[which(data[[i]]$Sample==j)] <- batch$Date_of_10X_Collection[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$Number6W[which(data[[i]]$Sample==j)] <- batch$Number_of_6wells_Used[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$PrewashCount[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Count_Prewash[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$PrewashViability[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Viability_Prewash[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$PostwashCount[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Count_Postwash[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$PostwashViability[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Viability_Postwash[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$PostmixCount[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Count_Postwash_Postmix[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$PostmixViability[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Viability_Postwash_Postmix[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$DatecDNA[which(data[[i]]$Sample==j)] <- batch$Date_of_10X_cDNA_Synthesis[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$DateLibrary[which(data[[i]]$Sample==j)] <- batch$Date_of_10X_Library_Prep[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$SequencingBatch[which(data[[i]]$Sample==j)] <- batch$X10X_Sequencing_Pool[which(batch$Sample_in_Pool==j)]
+#    }
+#  }
+#}
 
 ```
 
 ```{r, eval=FALSE, echo=TRUE}
 
 #Save data
-saveRDS(data, file="./data/cellranger-data-full/data.rds")
+saveRDS(data, file="./data/data.rds")
 
 ```
+
+..
+..
+..
+UPDATE FROM HERE
+..
+..
+..
 
 ### Export processed count matrices for GEO
 
-Processed data for pilot eQTL paper
-
-```{r, eval=FALSE}
-
-#Export count matrix and metadata for GHO-1, GHO-2, GHO-3, and GHO-4 [processed data for pilot eQTL paper]
-
-#Load and add metadata to GHO-3
-dataGHO3 <- readRDS(paste0("./data/cellranger-data-full/h.c.dat.spp.GHO-3.rds"))
-#percent mitochondria
-mito <- c("MT-ATP6","MT-ATP8","MT-CO1","MT-CO2","MT-CO3","MT-CYB","MT-ND1","MT-ND2","MT-ND3","MT-ND4","MT-ND4L","MT-ND5")
-dataGHO3$percent.mt <- PercentageFeatureSet(dataGHO3, features=mito)
-#collection
-dataGHO3$Collection <- 0
-#cell type anticipated based on stage of differentiation at collection
-dataGHO3$Cell.Type <- "Chondrogenic"
-#individuals pooled together in collection
-dataGHO3$Pair <- "H1+C1"
-#individual cell line used in collection
-dataGHO3$Individual <- NA
-dataGHO3$Individual[which(dataGHO3$Species=="Human")] <- "H1"
-dataGHO3$Individual[which(dataGHO3$Species=="Chimp")] <- "C1"
-#replicate in overall study design
-dataGHO3$Replicate <- "1"
-#msc media
-dataGHO3$MSCmedia <- "3B"
-#abbreviation of sample name in collection
-dataGHO3$Sample <- NA
-dataGHO3$Sample[which(dataGHO3$Individual=="H1")] <- "H1-C" 
-dataGHO3$Sample[which(dataGHO3$Individual=="C1")] <- "C1-C" 
-#several details on cell line and collection
-dataGHO3$Sex <- "M"
-dataGHO3$Age <- NA
-dataGHO3$Age[which(dataGHO3$Individual=="H1")] <- 22
-dataGHO3$Age[which(dataGHO3$Individual=="C1")] <- 16
-dataGHO3$DateCollection <- "6/5/2019"
-dataGHO3$Number6W <- 3
-dataGHO3$PrewashCount <- NA
-dataGHO3$PrewashCount[which(dataGHO3$Individual=="H1")] <- 1025000
-dataGHO3$PrewashCount[which(dataGHO3$Individual=="C1")] <- 0.575
-dataGHO3$PrewashViability <- NA
-dataGHO3$PrewashViability[which(dataGHO3$Individual=="H1")] <- 2440000
-dataGHO3$PrewashViability[which(dataGHO3$Individual=="C1")] <- 0.48
-dataGHO3$PostwashCount <- NA
-dataGHO3$PostwashCount[which(dataGHO3$Individual=="H1")] <- 440000
-dataGHO3$PostwashCount[which(dataGHO3$Individual=="C1")] <- 445000
-dataGHO3$PostwashViability <- NA
-dataGHO3$PostwashViability[which(dataGHO3$Individual=="H1")] <- 0.75
-dataGHO3$PostwashViability[which(dataGHO3$Individual=="C1")] <- 0.6
-dataGHO3$PostmixCount <- 425000
-dataGHO3$PostmixViability <- 0.75
-dataGHO3$DatecDNA <- "6/5/2019"
-dataGHO3$DateLibrary <- "6/10/2019"
-dataGHO3$SequencingBatch <- 1
-#facs information (control)
-dataGHO3$CD90_Control <- NA
-dataGHO3$CD73_Control <- NA
-dataGHO3$CD105_Control <- NA
-dataGHO3$CD45.CD34.CD11b.CD19.HLA.DR_Control <- NA
-#facs information (cocktail) 
-dataGHO3$CD90 <- NA
-dataGHO3$CD73 <- NA
-dataGHO3$CD105 <- NA
-dataGHO3$CD45.CD34.CD11b.CD19.HLA.DR <- NA
-#alizarin red data
-dataGHO3$Alizarin <- NA
-#oil red data (put with MSCs and osteogenic cells)
-dataGHO3$OilRed <- NA
-#cell classification information - stage of differentiation at collection
-dataGHO3$Stage <- "Time 3"
-
-#####
-
-#Read in remaining data
-data <- readRDS("./data/cellranger-data-full/data.rds")
-
-#Rename cells
-data[[1]] <- RenameCells(data[[1]], add.cell.id="GHO-1")
-data[[2]] <- RenameCells(data[[2]], add.cell.id="GHO-2")
-dataGHO3  <- RenameCells(dataGHO3, add.cell.id="GHO-3")
-data[[3]] <- RenameCells(data[[3]], add.cell.id="GHO-4")
-
-#Combine raw count data
-tbl.cnt <- cbind(as.data.frame(GetAssayData(object=data[[1]], slot="counts")),
-                 as.data.frame(GetAssayData(object=data[[2]], slot="counts")),
-                 as.data.frame(GetAssayData(object=dataGHO3, slot="counts")),
-                 as.data.frame(GetAssayData(object=data[[3]], slot="counts")))
-
-#Combine metadata
-tbl.met <- rbind(as.data.frame(data[[1]]@meta.data)[,-c(1:3)],
-                 as.data.frame(data[[2]]@meta.data)[,-c(1:3)],
-                 as.data.frame(dataGHO3@meta.data)[,-c(1:3)],
-                 as.data.frame(data[[3]]@meta.data)[,-c(1:3)])
-
-#Save processed data
-write.table(tbl.cnt, 
-            file="./data/cellranger-data-full/GHO_count.csv", 
-            sep=',',
-            row.names=T,
-            col.names=T,
-            quote=F)
-write.table(tbl.met, 
-            file="./data/cellranger-data-full/GHO_meta.csv", 
-            sep=',',
-            row.names=T,
-            col.names=T,
-            quote=F)
-
-```
-
-```{bash, eval=FALSE}
-#easiest to do this on the computing cluster
-
-#Make folder containing files to be uploaded to GEO
-cd /project2/gilad/ghousman
-mkdir geo_GHO_20210218
-cd geo_GHO_20210218
-mkdir data_raw
-mkdir data_proc
-cd data_proc
-cp /project2/gilad/ghousman/skeletal-human-chimp/human-chimp-skeletal-scRNA/data/cellranger-data-full/GHO_count.csv ./GHO_count.csv
-cp /project2/gilad/ghousman/skeletal-human-chimp/human-chimp-skeletal-scRNA/data/cellranger-data-full/GHO_meta.csv ./GHO_meta.csv
-md5sum *
-#manually added file checksum to metadata file
-cd ..
-cd data_raw
-cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190621_K00242_0576_AH7G3JBBXY_YG-GH-10X-4S-ln1/H7G3JBBXY_6/*/*.fastq.gz .
-cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190626_K00242_0578_AH77TNBBXY_YG-GH-10X-4S-ln2/H77TNBBXY_1/*/*.fastq.gz .
-cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190726_K00242_0593_BH77N2BBXY_YG-GH-10X-4S-xtra-ln1/H77N2BBXY_7/*/*.fastq.gz .
-cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/190730_K00242_0594_BH7N3HBBXY_YG-GH-10X-4S-xtra-ln2/H7N3HBBXY_3/*/*.fastq.gz .
-rm *_I1_*.fastq.gz
-md5sum *
-#manually added file checksum to metadata file
-#manually transferred metadata file to geo_GHO_20210218 via FileZilla
-
-#Upload files to GEO
-cd /project2/gilad/ghousman
-sftp geoftp@sftp-private.ncbi.nlm.nih.gov
-cd uploads/ghousman_SbedAyUe
-mkdir geo_GHO_20210218
-put -R /project2/gilad/ghousman/geo_GHO_20210218
-
-#Remove files for GEO
-cd /project2/gilad/ghousman
-rm -r geo_GHO_20210218
-```
-
-Processed data remaining for comparative osteogenesis paper
+Processed data for comparative osteogenesis paper
 
 ```{r, eval=FALSE}
 
