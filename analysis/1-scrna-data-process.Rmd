@@ -1057,7 +1057,7 @@ data[[2]]$Sample <- paste0(data[[2]]$Individual,"-",data[[2]]$Stage)
 
 ```{r, eval=FALSE, echo=TRUE}
 
-#Save data
+#Save total data
 saveRDS(data, file="./data/data.rds")
 
 ```
