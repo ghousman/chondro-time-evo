@@ -157,6 +157,28 @@ sbatch ./../chondro-time-evo/code/cellranger/cellranger.batch2.hc.sh
 
 ```
 
+Try running again with CMO threshold of 0.6 (instead of the default of 0.9)
+
+```{bash, eval=FALSE}
+
+#process reads using human genome and ortho exon annotation
+cd /project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/scRNA
+sbatch ./../chondro-time-evo/code/cellranger_06/cellranger.batch1.h.sh
+sbatch ./../chondro-time-evo/code/cellranger_06/cellranger.batch2.h.sh
+
+#process reads using chimp genome and ortho exon annotation
+cd /project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/scRNA
+sbatch ./../chondro-time-evo/code/cellranger_06/cellranger.batch1.c.sh
+sbatch ./../chondro-time-evo/code/cellranger_06/cellranger.batch2.c.sh
+
+#process reads using human/chimp combined genome and ortho exon annotation
+cd /project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/scRNA
+sbatch ./../chondro-time-evo/code/cellranger_06/cellranger.batch1.hc.sh
+sbatch ./../chondro-time-evo/code/cellranger_06/cellranger.batch2.hc.sh
+
+```
+
+
 ## Examine CMO assignments
 
 https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/output/cellplex
