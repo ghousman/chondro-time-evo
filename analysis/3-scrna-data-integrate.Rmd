@@ -844,15 +844,10 @@ dev.off()
 
 ```
 
-..
-..
-..
-UPDATED TEXT
-..
-..
-..
-
-Decided to move forward with:
+Decided to move forward with (also need to look into it some more):
 
 * conservative filter with data integrated across genes repeatedly variable across datasets and with nCount_RNA and percent.mt regressed out during data scaling following integration (data.filterC.log.chond-ind.int.Var.caa.50.reg.rds)
+
+The following dataset is also good, but humans and chimps are not as well integrated on the UMAP
+
 * conservative filter with data integrated across all genes with non-zero UMI counts and with nCount_RNA and percent.mt regressed out during data scaling following integration (data.filterC.log.chond-ind.int.No0.caa.50.reg.rds)
