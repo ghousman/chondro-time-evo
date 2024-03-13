@@ -1,7 +1,7 @@
 ---
 title: "scrna-data-classification"
 author: "Genevieve Housman"
-date: "April 2023"
+date: "July 2023"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -35,29 +35,39 @@ library(RColorBrewer)
 library(tidyr)
 library(UpSetR)
 library(reshape2)
-library(CountClust)
-library(classtpx)
+#library(CountClust)
+#library(classtpx)
 library(fastTopics)
 
 ```
 
 Currently working with the following datasets
 
-* data integrated across individuals - chondro (conservative cell filter + intra-dataset variable genes + regress out UMI/mito
-* data integrated across individuals - chondro (conservative cell filter + non-zero genes + regress out UMI/mito)
+* data integrated across individuals - chond (conservative cell filter + intra-dataset variable genes + regress out UMI/mito
+* data integrated across individuals - chond (conservative cell filter + non-zero genes + regress out UMI/mito)
 
 ```{r}
 
 #define parameters for integrated data
+
+#filter <- ""
+#filter <- ".filterL"
+filter <- ".filterC"
+
+set <- "chond-ind"  #all chondrogenic cells
+
 genes <- "Var"  #features that are repeatedly variable across datasets for integration
 #genes <- "No0"  #all genes that have at least 1 UMI count across samples
 #genes <- "19k"  #all 19397 genes
+
 dimred <- "cca"
 #dimred <- "pca"
 #dimred <- "ref"
+
 kweigh <- 50
 #kweigh <- 100
-regout <- "reg"
+
+regout <- "reg" #this takes a long time when genes=No0
 #regout <- "non"
 
 ```
@@ -65,16 +75,12 @@ regout <- "reg"
 ```{r, eval=FALSE}
 
 #Load data
-scrna <- paste0("./data/integrated/data.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds")
+scrna <- paste0("./data/integrated/06_data",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds")
 data <- readRDS(scrna)
 
 ```
 
 ```{r}
-
-#Load data
-#scrna <- paste0("./data/integrated/data.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".assign.rds")
-#data <- readRDS(scrna)
 
 data
 head(data@meta.data)
@@ -84,17 +90,22 @@ DimPlot(data,
         reduction="umap") +
   labs(x="UMAP1",y="UMAP2")
 
+FeaturePlot(data,
+            features=c("nCount_RNA","percent.mt"),
+            reduction="umap") +
+  labs(x="UMAP1",y="UMAP2")
+
 ```
 
 ## Seurat Clustering
 
                                Var.cca.50.reg    No0.cca.50.reg
-data, k=40, res=1.00 clusters:             11
-data, k=40, res=0.75 clusters:             11
-data, k=40, res=0.50 clusters:              8
-data, k=40, res=0.25 clusters:              5
+data, k=40, res=1.00 clusters:             19
+data, k=40, res=0.75 clusters:             14
+data, k=40, res=0.50 clusters:             12
+data, k=40, res=0.25 clusters:              8
 data, k=40, res=0.10 clusters:              4
-data, k=40, res=0.05 clusters:              3
+data, k=40, res=0.05 clusters:              4
 
 ```{r, eval=FALSE}
 
@@ -118,14 +129,14 @@ rm(pva,ndim)
 
 ```{r, eval=FALSE}
 
-saveRDS(data, file=paste0("./data/integrated/data.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".assign.rds"))
+saveRDS(data, file=paste0("./data/integrated/06_data",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".assign.rds"))
 
 ```
 
 ```{r}
 
 #Load data
-scrna <- paste0("./data/integrated/data.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".assign.rds")
+scrna <- paste0("./data/integrated/06_data",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".assign.rds")
 data <- readRDS(scrna)
 
 ```
@@ -183,6 +194,10 @@ table(subset(data,subset=(Species=="Chimp" & ChondroStage=="Day 7"))@meta.data$i
 table(subset(data,subset=(Species=="Chimp" & ChondroStage=="Day 14"))@meta.data$integrated_snn_res.0.25)
 
 ```
+
+...
+PICK UP HERE
+...
 
 Visualize clusters (see 10x-plot-calssification-clusters.Rmd for figures)
 
@@ -263,7 +278,7 @@ data$ChondroCluster0.75[which(data$integrated_snn_res.0.75=="8")]  <- "Chondroge
 
 ```{r, eval=FALSE}
 
-saveRDS(data, file=paste0("./data/integrated/data.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".assign.rds"))
+saveRDS(data, file=paste0("./data/integrated/06_data",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".assign.rds"))
 
 ```
 
@@ -574,6 +589,292 @@ sbatch --account=pi-gilad ./FindMarkers.sh 1.00 Var cca 50 reg
 ```
 
 
+## Integrate with External Dataset (Kenneth iPSC-derived EBs)
+
+Integrate current study data with Kenneth's iPSC-derived EB data (total)
+
+```{r}
+
+#define parameters for integrated data
+
+#filter <- ""
+#filter <- ".filterL"
+filter <- ".filterC"
+
+set <- "chond-ind"  #all chondrogenic cells
+
+genes <- "Var"  #features that are repeatedly variable across datasets for integration
+#genes <- "No0"  #all genes that have at least 1 UMI count across samples
+#genes <- "19k"  #all 19397 genes
+
+dimred <- "cca"
+#dimred <- "pca"
+#dimred <- "ref"
+
+kweigh <- 50
+#kweigh <- 100
+
+regout <- "reg" #this takes a long time when genes=No0
+#regout <- "non"
+
+```
+
+```{r, eval=FALSE}
+
+#Integrate cells (across individuals)
+
+organoid_data <- readRDS(paste0("./data/06_data",filter,".log.",set,".rds"))
+eb_data <- readRDS(file="/project2/gilad/kenneth/share/pilot.humans.rds")
+
+#add chondro-stage metadata
+eb_data$ChondroStage <- "KB: iPSC-EB"
+
+obj <- append(organoid_data,eb_data)
+rm(organoid_data,eb_data)
+
+#select genes to use for finding integration anchors
+if (genes=="Var") {
+  obj.features <- SelectIntegrationFeatures(object.list = obj)
+  length(obj.features) 
+}
+if (genes=="No0") {
+  geneList <- c()
+  for(object in obj) {
+    geneList <- c(geneList,rownames(object@assays$RNA@counts)[rowSums(object@assays$RNA@counts)!=0])
+  }
+  obj.features <- unique(geneList)
+  length(obj.features)
+}
+if (genes=="19k") {
+  obj.features <- rownames(obj[[1]]@assays$RNA@counts)
+  length(obj.features)
+}
+
+#scale data and run pca
+obj <- lapply(X=obj, FUN=function(x) {
+  x <- ScaleData(x, features=obj.features, verbose=FALSE)
+  x <- RunPCA(x, features=obj.features, verbose=FALSE)
+})
+
+#find integration anchors
+if (dimred=="cca") {
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reduction="cca")
+}
+if (dimred=="pca") {
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reduction="rpca")
+}
+if (dimred=="ref") {
+  ref.data <- c(2,9) #H1-r2 and C1-r2 differentiated best
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reference=ref.data,
+                                        reduction="rpca")
+}
+
+#integrate data
+integrate <- IntegrateData(anchorset=obj.anchors,
+                           normalization.method="LogNormalize",
+                           k.weight=kweigh)
+
+#regress out unwanted variables
+if (regout=="reg") {
+  integrate <- ScaleData(integrate, vars.to.regress=c("nCount_RNA","percent.mt"))
+}
+if (regout=="non") {
+  integrate <- ScaleData(integrate, vars.to.regress=NULL, verbose=FALSE)
+}
+
+#run pca
+integrate <- RunPCA(object=integrate,
+                    npcs=100,
+                    verbose=FALSE)
+
+#keep all dims that explaim more than 0.1% of variance
+pva <- integrate@reductions$pca@stdev^2/integrate@reductions$pca@misc$total.variance
+ndim <- length(which(pva>=0.001))
+print(ndim)
+
+#run umap
+integrate <- RunUMAP(integrate,
+                     dims=1:ndim)
+
+#save data
+saveRDS(integrate, file=paste0("./data/integrated/06_combined-data-eb",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+
+#clear variables
+rm(genes,dimred,kweigh,regout)
+rm(obj,obj.features,obj.anchors,integrate,pva,ndim)
+
+```
+
+```{r}
+
+#visualize data
+integrate <- readRDS(file=paste0("./data/integrated/06_combined-data-eb",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+DimPlot(integrate,
+        group.by="ChondroStage",
+        reduction="umap") +
+  labs(x="UMAP1",y="UMAP2")
+DimPlot(integrate,
+        group.by="labels",
+        label=TRUE,
+        reduction="umap") +
+  labs(x="UMAP1",y="UMAP2") +
+  NoLegend()
+
+```
+
+Integrate current study data with Kenneth's iPSC-derived EB data (human only)
+
+```{r}
+
+#define parameters for integrated data
+
+#filter <- ""
+#filter <- ".filterL"
+filter <- ".filterC"
+
+set <- "chond-ind"  #all chondrogenic cells
+
+genes <- "Var"  #features that are repeatedly variable across datasets for integration
+#genes <- "No0"  #all genes that have at least 1 UMI count across samples
+#genes <- "19k"  #all 19397 genes
+
+dimred <- "cca"
+#dimred <- "pca"
+#dimred <- "ref"
+
+kweigh <- 50
+#kweigh <- 100
+
+regout <- "reg" #this takes a long time when genes=No0
+#regout <- "non"
+
+```
+
+```{r, eval=FALSE}
+
+#Integrate cells (across individuals)
+
+organoid_data <- readRDS(paste0("./data/06_data",filter,".log.",set,".rds"))
+eb_data <- readRDS(file="/project2/gilad/kenneth/share/pilot.humans.rds")
+
+#isolate just human data
+organoid_data_human <- append(organoid_data[[1]],append(organoid_data[[3]],append(organoid_data[[5]],organoid_data[[7]])))
+
+#add chondro-stage metadata
+eb_data$ChondroStage <- "KB: iPSC-EB"
+
+obj <- append(organoid_data_human,eb_data)
+rm(organoid_data,organoid_data_human,eb_data)
+
+#select genes to use for finding integration anchors
+if (genes=="Var") {
+  obj.features <- SelectIntegrationFeatures(object.list = obj)
+  length(obj.features) 
+}
+if (genes=="No0") {
+  geneList <- c()
+  for(object in obj) {
+    geneList <- c(geneList,rownames(object@assays$RNA@counts)[rowSums(object@assays$RNA@counts)!=0])
+  }
+  obj.features <- unique(geneList)
+  length(obj.features)
+}
+if (genes=="19k") {
+  obj.features <- rownames(obj[[1]]@assays$RNA@counts)
+  length(obj.features)
+}
+
+#scale data and run pca
+obj <- lapply(X=obj, FUN=function(x) {
+  x <- ScaleData(x, features=obj.features, verbose=FALSE)
+  x <- RunPCA(x, features=obj.features, verbose=FALSE)
+})
+
+#find integration anchors
+if (dimred=="cca") {
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reduction="cca")
+}
+if (dimred=="pca") {
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reduction="rpca")
+}
+if (dimred=="ref") {
+  ref.data <- c(2,9) #H1-r2 and C1-r2 differentiated best
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reference=ref.data,
+                                        reduction="rpca")
+}
+
+#integrate data
+integrate <- IntegrateData(anchorset=obj.anchors,
+                           normalization.method="LogNormalize",
+                           k.weight=kweigh)
+
+#regress out unwanted variables
+if (regout=="reg") {
+  integrate <- ScaleData(integrate, vars.to.regress=c("nCount_RNA","percent.mt"))
+}
+if (regout=="non") {
+  integrate <- ScaleData(integrate, vars.to.regress=NULL, verbose=FALSE)
+}
+
+#run pca
+integrate <- RunPCA(object=integrate,
+                    npcs=100,
+                    verbose=FALSE)
+
+#keep all dims that explaim more than 0.1% of variance
+pva <- integrate@reductions$pca@stdev^2/integrate@reductions$pca@misc$total.variance
+ndim <- length(which(pva>=0.001))
+print(ndim)
+
+#run umap
+integrate <- RunUMAP(integrate,
+                     dims=1:ndim)
+
+#save data
+saveRDS(integrate, file=paste0("./data/integrated/06_combined-data-eb-human",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+
+#clear variables
+rm(genes,dimred,kweigh,regout)
+rm(obj,obj.features,obj.anchors,integrate,pva,ndim)
+
+```
+
+```{r}
+
+#visualize data
+integrate <- readRDS(file=paste0("./data/integrated/06_combined-data-eb-human",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+DimPlot(integrate,
+        group.by="ChondroStage",
+        reduction="umap") +
+  labs(x="UMAP1",y="UMAP2")
+DimPlot(integrate,
+        group.by="labels",
+        label=TRUE,
+        reduction="umap") +
+  labs(x="UMAP1",y="UMAP2") +
+  NoLegend()
+
+```
+
+
 ## Integrate with External Dataset (Wu et al. 2021)
 
 Chondrogenic Dataset from Wu et al. (2021) Nature Communications
@@ -644,34 +945,49 @@ wu_combined_rev[["percent.mt"]] <- PercentageFeatureSet(wu_combined_rev, pattern
 wu_combined_rev <- subset(wu_combined_rev, subset=(percent.mt<25 & nCount_RNA>1000 & nCount_RNA<60000 & nFeature_RNA>250 & nFeature_RNA<7500))
 wu_combined_rev
 
-save(wu_combined_rev, file="./data/external/wu_combined_rev.rds")
+saveRDS(wu_combined_rev, file="./data/external/wu_combined_rev.rds")
+rm(wu_combined_rev)
 
 ```
 
-Integrate current study data with Wu data
+Integrate current study data with Wu data (total)
 
-```{r, eval=FALSE}
+```{r}
 
-#Integrate all chondrogenic cells (across individuals)
+#define parameters for integrated data
 
-organoid_data <- readRDS(paste0("./data/data.filterC.log.chond-ind.rds"))
-#wu_data  <- readRDS(file="./data/external/wu_combined_rev.rds")
-wu_data <- wu_combined_rev
+#filter <- ""
+#filter <- ".filterL"
+filter <- ".filterC"
 
-obj <- append(organoid_data,wu_data)
-rm(organoid_data,wu_data)
+set <- "chond-ind"  #all chondrogenic cells
 
-#parameters for integration
 genes <- "Var"  #features that are repeatedly variable across datasets for integration
 #genes <- "No0"  #all genes that have at least 1 UMI count across samples
 #genes <- "19k"  #all 19397 genes
+
 dimred <- "cca"
 #dimred <- "pca"
 #dimred <- "ref"
+
 kweigh <- 50
 #kweigh <- 100
-regout <- "reg"
+
+regout <- "reg" #this takes a long time when genes=No0
 #regout <- "non"
+
+```
+
+```{r, eval=FALSE}
+
+#Integrate all cells (across individuals)
+
+organoid_data <- readRDS(paste0("./data/06_data",filter,".log.",set,".rds"))
+wu_data  <- readRDS(file="./data/external/wu_combined_rev.rds")
+#wu_data <- wu_combined_rev
+
+obj <- append(organoid_data,wu_data)
+rm(organoid_data,wu_data)
 
 #select genes to use for finding integration anchors
 if (genes=="Var") {
@@ -747,17 +1063,157 @@ integrate <- RunUMAP(integrate,
                      dims=1:ndim)
 
 #save data
-saveRDS(integrate, file=paste0("./data/integrated/combined-data-wu",filter,".log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+saveRDS(integrate, file=paste0("./data/integrated/06_combined-data-wu",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+
+#clear variables
+rm(genes,dimred,kweigh,regout)
+rm(obj,obj.features,obj.anchors,integrate,pva,ndim)
+
+```
+
+```{r}
 
 #visualize data
+integrate <- readRDS(file=paste0("./data/integrated/06_combined-data-wu",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
 DimPlot(integrate,
         group.by="ChondroStage",
         reduction="umap") +
   labs(x="UMAP1",y="UMAP2")
 
+```
+
+Integrate current study data with Wu data (human only)
+
+```{r}
+
+#define parameters for integrated data
+
+#filter <- ""
+#filter <- ".filterL"
+filter <- ".filterC"
+
+set <- "chond-ind"  #all chondrogenic cells
+
+genes <- "Var"  #features that are repeatedly variable across datasets for integration
+#genes <- "No0"  #all genes that have at least 1 UMI count across samples
+#genes <- "19k"  #all 19397 genes
+
+dimred <- "cca"
+#dimred <- "pca"
+#dimred <- "ref"
+
+kweigh <- 50
+#kweigh <- 100
+
+regout <- "reg" #this takes a long time when genes=No0
+#regout <- "non"
+
+```
+
+```{r, eval=FALSE}
+
+#Integrate cells (across individuals)
+
+organoid_data <- readRDS(paste0("./data/06_data",filter,".log.",set,".rds"))
+wu_data  <- readRDS(file="./data/external/wu_combined_rev.rds")
+#wu_data <- wu_combined_rev
+
+#isolate just human data
+organoid_data_human <- append(organoid_data[[1]],append(organoid_data[[3]],append(organoid_data[[5]],organoid_data[[7]])))
+
+obj <- append(organoid_data_human,wu_data)
+rm(organoid_data,organoid_data_human,wu_data)
+
+#select genes to use for finding integration anchors
+if (genes=="Var") {
+  obj.features <- SelectIntegrationFeatures(object.list = obj)
+  length(obj.features) 
+}
+if (genes=="No0") {
+  geneList <- c()
+  for(object in obj) {
+    geneList <- c(geneList,rownames(object@assays$RNA@counts)[rowSums(object@assays$RNA@counts)!=0])
+  }
+  obj.features <- unique(geneList)
+  length(obj.features)
+}
+if (genes=="19k") {
+  obj.features <- rownames(obj[[1]]@assays$RNA@counts)
+  length(obj.features)
+}
+
+#scale data and run pca
+obj <- lapply(X=obj, FUN=function(x) {
+  x <- ScaleData(x, features=obj.features, verbose=FALSE)
+  x <- RunPCA(x, features=obj.features, verbose=FALSE)
+})
+
+#find integration anchors
+if (dimred=="cca") {
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reduction="cca")
+}
+if (dimred=="pca") {
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reduction="rpca")
+}
+if (dimred=="ref") {
+  ref.data <- c(2,9) #H1-r2 and C1-r2 differentiated best
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reference=ref.data,
+                                        reduction="rpca")
+}
+
+#integrate data
+integrate <- IntegrateData(anchorset=obj.anchors,
+                           normalization.method="LogNormalize",
+                           k.weight=kweigh)
+
+#regress out unwanted variables
+if (regout=="reg") {
+  integrate <- ScaleData(integrate, vars.to.regress=c("nCount_RNA","percent.mt"))
+}
+if (regout=="non") {
+  integrate <- ScaleData(integrate, vars.to.regress=NULL, verbose=FALSE)
+}
+
+#run pca
+integrate <- RunPCA(object=integrate,
+                    npcs=100,
+                    verbose=FALSE)
+
+#keep all dims that explaim more than 0.1% of variance
+pva <- integrate@reductions$pca@stdev^2/integrate@reductions$pca@misc$total.variance
+ndim <- length(which(pva>=0.001))
+print(ndim)
+
+#run umap
+integrate <- RunUMAP(integrate,
+                     dims=1:ndim)
+
+#save data
+saveRDS(integrate, file=paste0("./data/integrated/06_combined-data-wu-human.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+
 #clear variables
 rm(genes,dimred,kweigh,regout)
 rm(obj,obj.features,obj.anchors,integrate,pva,ndim)
+
+```
+
+```{r}
+
+#visualize data
+integrate <- readRDS(file=paste0("./data/integrated/06_combined-data-wu-human",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+DimPlot(integrate,
+        group.by="ChondroStage",
+        reduction="umap") +
+  labs(x="UMAP1",y="UMAP2")
 
 ```
 
@@ -770,54 +1226,88 @@ Pilot GAH iPSC/MSC/Osteogenic/Chondrogenic Monolayer Differentiation Dataset
 
 #Pilot differentiations that GAH performed in the Gilad lab with human (H1, H23555) and chimp (C1, C8861) samples
 
-count_data_gah <- read.csv2("/project2/gilad/ghousman/skeletal-human-chimp/human-chimp-skeletal-scRNA/data/cellranger-data-full/GHO_count.csv")
-meta_data_gah <- read.csv2("/project2/gilad/ghousman/skeletal-human-chimp/human-chimp-skeletal-scRNA/data/cellranger-data-full/GHO_meta.csv")
+count_data_gah <- read.csv("/project2/gilad/ghousman/skeletal-human-chimp/human-chimp-skeletal-scRNA/data/cellranger-data-full/GHO_count.csv")
+meta_data_gah <- read.csv("/project2/gilad/ghousman/skeletal-human-chimp/human-chimp-skeletal-scRNA/data/cellranger-data-full/GHO_meta.csv")
+rownames(meta_data_gah) <- str_replace(rownames(meta_data_gah),"-",".")
 
 gah_data <- CreateSeuratObject(counts=count_data_gah, meta.data=meta_data_gah, project="gah")
+rm(count_data_gah,meta_data_gah)
 
-for (i in 1:length(gah_data)) { gah_data[[i]]$ChondroStage <- NA }
-for (i in 1:length(gah_data)) {
-  gah_data[[i]]$ChondroStage[which(gah_data[[i]]$Cell.Type=="iPSC")]         <- "GH: iPSC"
-  gah_data[[i]]$ChondroStage[which(gah_data[[i]]$Cell.Type=="MSC")]          <- "GH: Day 00"
-  gah_data[[i]]$ChondroStage[which(gah_data[[i]]$Cell.Type=="Osteogenic")]   <- "GH: Osteo"
-  gah_data[[i]]$ChondroStage[which(gah_data[[i]]$Cell.Type=="Chondrogenic")] <- "GH: Day 21*"
-}
-
-#### DO I NEED TO SUBSET DATA BY SPECIES??? ####
+gah_data$ChondroStage <- NA
+gah_data$ChondroStage[which(gah_data$Cell.Type=="iPSC")]         <- "GH: iPSC"
+gah_data$ChondroStage[which(gah_data$Cell.Type=="MSC")]          <- "GH: Day 00"
+gah_data$ChondroStage[which(gah_data$Cell.Type=="Osteogenic")]   <- "GH: Osteo"
+gah_data$ChondroStage[which(gah_data$Cell.Type=="Chondrogenic")] <- "GH: Day 21*"
 
 #filter data
 #gah_data <- subset(gah_data, subset=percent.mt < 5)
 gah_data <- subset(gah_data, subset=(percent.mt<25 & nCount_RNA>1000 & nCount_RNA<60000 & nFeature_RNA>250 & nFeature_RNA<7500))
 dim(gah_data)
 
-save(gah_data, file="./data/external/gah_data.rds")
+saveRDS(gah_data, file="./data/external/gah_data.rds")
+
+#isolate just chondrogenic cells
+gah_data_chondro <- subset(gah_data, subset=ChondroStage=="GH: Day 21*")
+dim(gah_data_chondro)
+saveRDS(gah_data_chondro, file="./data/external/gah_data_chondro.rds")
+
+#isolate just osteogenic cells
+gah_data_osteo <- subset(gah_data, subset=ChondroStage=="GH: Osteo")
+dim(gah_data_osteo)
+saveRDS(gah_data_osteo, file="./data/external/gah_data_osteo.rds")
+
+#isolate just chondrogenic cells + osteogenic cells
+gah_data_chondroosteo <- subset(gah_data, subset=(ChondroStage=="GH: Day 21*" | ChondroStage=="GH: Osteo"))
+dim(gah_data_chondroosteo)
+saveRDS(gah_data_chondroosteo, file="./data/external/gah_data_chondroosteo.rds")
+
+rm(gah_data,gah_data_chondro)
 
 ```
 
-Integrate current study data with pilot differentiation data
+Integrate current study data with pilot differentiation data (total)
 
-```{r, eval=FALSE}
+```{r}
 
-#Integrate all chondrogenic cells (across individuals)
+#define parameters for integrated data
 
-organoid_data <- readRDS(paste0("./data/data.filterC.log.chond-ind.rds"))
-gah_data  <- readRDS("./data/external/gah_data.rds")
+#filter <- ""
+#filter <- ".filterL"
+filter <- ".filterC"
 
-obj <- append(organoid_data,gah_data)
+set <- "chond-ind"  #all chondrogenic cells
 
-rm(organoid_data,gah_data)
-
-#parameters for integration
-#genes <- "Var"  #features that are repeatedly variable across datasets for integration
-genes <- "No0"  #all genes that have at least 1 UMI count across samples
+genes <- "Var"  #features that are repeatedly variable across datasets for integration
+#genes <- "No0"  #all genes that have at least 1 UMI count across samples
 #genes <- "19k"  #all 19397 genes
+
 dimred <- "cca"
 #dimred <- "pca"
 #dimred <- "ref"
+
 kweigh <- 50
 #kweigh <- 100
-regout <- "reg"
+
+regout <- "reg" #this takes a long time when genes=No0
 #regout <- "non"
+
+```
+
+```{r, eval=FALSE}
+
+#Integrate all cells (across individuals)
+
+organoid_data <- readRDS(paste0("./data/06_data",filter,".log.",set,".rds"))
+gah_data  <- readRDS("./data/external/gah_data.rds")
+
+#subset gah data by individuals
+gah_data_h1 <- subset(gah_data, subset=Individual=="H1")
+gah_data_c1 <- subset(gah_data, subset=Individual=="C1")
+
+#obj <- append(organoid_data,gah_data)
+obj <- append(append(organoid_data,gah_data_h1),gah_data_c1)
+
+rm(organoid_data,gah_data,gah_data_h1,gah_data_c1)
 
 #select genes to use for finding integration anchors
 if (genes=="Var") {
@@ -893,17 +1383,454 @@ integrate <- RunUMAP(integrate,
                      dims=1:ndim)
 
 #save data
-saveRDS(integrate, file=paste0("./data/integrated/combined-data-gah",filter,".log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
-
-#visualize data
-DimPlot(data,
-        group.by="ChondroStage",
-        reduction="umap") +
-  labs(x="UMAP1",y="UMAP2")
+integrate <- readRDS(file=paste0("./data/integrated/06_combined-data-gah",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+saveRDS(integrate, file=paste0("./data/integrated/06_combined-data-gah",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
 
 #clear variables
 rm(genes,dimred,kweigh,regout)
 rm(obj,obj.features,obj.anchors,integrate,pva,ndim)
+
+```
+
+```{r}
+
+#visualize data
+integrate <- readRDS(file=paste0("./data/integrated/06_combined-data-gah",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+DimPlot(integrate,
+        group.by="ChondroStage",
+        reduction="umap") +
+  labs(x="UMAP1",y="UMAP2")
+DimPlot(integrate,
+        group.by="ChondroStage",
+        split.by="Species",
+        reduction="umap") +
+  labs(x="UMAP1",y="UMAP2")
+
+```
+
+Integrate current study data with pilot differentiation data (chondro only)
+
+```{r}
+
+#define parameters for integrated data
+
+#filter <- ""
+#filter <- ".filterL"
+filter <- ".filterC"
+
+set <- "chond-ind"  #all chondrogenic cells
+
+genes <- "Var"  #features that are repeatedly variable across datasets for integration
+#genes <- "No0"  #all genes that have at least 1 UMI count across samples
+#genes <- "19k"  #all 19397 genes
+
+dimred <- "cca"
+#dimred <- "pca"
+#dimred <- "ref"
+
+kweigh <- 50
+#kweigh <- 100
+
+regout <- "reg" #this takes a long time when genes=No0
+#regout <- "non"
+
+```
+
+```{r, eval=FALSE}
+
+#Integrate all cells (across individuals)
+
+organoid_data <- readRDS(paste0("./data/06_data",filter,".log.",set,".rds"))
+gah_data  <- readRDS("./data/external/gah_data_chondro.rds")
+
+#subset gah data by individuals
+gah_data_h1 <- subset(gah_data, subset=Individual=="H1")
+gah_data_c1 <- subset(gah_data, subset=Individual=="C1")
+
+#obj <- append(organoid_data,gah_data)
+obj <- append(append(organoid_data,gah_data_h1),gah_data_c1)
+
+rm(organoid_data,gah_data,gah_data_h1,gah_data_c1)
+
+#select genes to use for finding integration anchors
+if (genes=="Var") {
+  obj.features <- SelectIntegrationFeatures(object.list = obj)
+  length(obj.features) 
+}
+if (genes=="No0") {
+  geneList <- c()
+  for(object in obj) {
+    geneList <- c(geneList,rownames(object@assays$RNA@counts)[rowSums(object@assays$RNA@counts)!=0])
+  }
+  obj.features <- unique(geneList)
+  length(obj.features)
+}
+if (genes=="19k") {
+  obj.features <- rownames(obj[[1]]@assays$RNA@counts)
+  length(obj.features)
+}
+
+#scale data and run pca
+obj <- lapply(X=obj, FUN=function(x) {
+  x <- ScaleData(x, features=obj.features, verbose=FALSE)
+  x <- RunPCA(x, features=obj.features, verbose=FALSE)
+})
+
+#find integration anchors
+if (dimred=="cca") {
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reduction="cca")
+}
+if (dimred=="pca") {
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reduction="rpca")
+}
+if (dimred=="ref") {
+  ref.data <- c(2,9) #H1-r2 and C1-r2 differentiated best
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reference=ref.data,
+                                        reduction="rpca")
+}
+
+#integrate data
+integrate <- IntegrateData(anchorset=obj.anchors,
+                           normalization.method="LogNormalize",
+                           k.weight=kweigh)
+
+#regress out unwanted variables
+if (regout=="reg") {
+  integrate <- ScaleData(integrate, vars.to.regress=c("nCount_RNA","percent.mt"))
+}
+if (regout=="non") {
+  integrate <- ScaleData(integrate, vars.to.regress=NULL, verbose=FALSE)
+}
+
+#run pca
+integrate <- RunPCA(object=integrate,
+                    npcs=100,
+                    verbose=FALSE)
+
+#keep all dims that explaim more than 0.1% of variance
+pva <- integrate@reductions$pca@stdev^2/integrate@reductions$pca@misc$total.variance
+ndim <- length(which(pva>=0.001))
+print(ndim)
+
+#run umap
+integrate <- RunUMAP(integrate,
+                     dims=1:ndim)
+
+#save data
+saveRDS(integrate, file=paste0("./data/integrated/06_combined-data-gah-chondro",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+
+#clear variables
+rm(genes,dimred,kweigh,regout)
+rm(obj,obj.features,obj.anchors,integrate,pva,ndim)
+
+```
+
+```{r}
+
+#visualize data
+integrate <- readRDS(file=paste0("./data/integrated/06_combined-data-gah-chondro",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+DimPlot(integrate,
+        group.by="ChondroStage",
+        reduction="umap") +
+  labs(x="UMAP1",y="UMAP2")
+DimPlot(integrate,
+        group.by="ChondroStage",
+        split.by="Species",
+        reduction="umap") +
+  labs(x="UMAP1",y="UMAP2")
+
+```
+
+Integrate current study data with pilot differentiation data (osteo only)
+
+```{r}
+
+#define parameters for integrated data
+
+#filter <- ""
+#filter <- ".filterL"
+filter <- ".filterC"
+
+set <- "chond-ind"  #all chondrogenic cells
+
+genes <- "Var"  #features that are repeatedly variable across datasets for integration
+#genes <- "No0"  #all genes that have at least 1 UMI count across samples
+#genes <- "19k"  #all 19397 genes
+
+dimred <- "cca"
+#dimred <- "pca"
+#dimred <- "ref"
+
+kweigh <- 50
+#kweigh <- 100
+
+regout <- "reg" #this takes a long time when genes=No0
+#regout <- "non"
+
+```
+
+```{r, eval=FALSE}
+
+#Integrate all cells (across individuals)
+
+organoid_data <- readRDS(paste0("./data/06_data",filter,".log.",set,".rds"))
+gah_data  <- readRDS("./data/external/gah_data_osteo.rds")
+
+#subset gah data by individuals
+gah_data_h1 <- subset(gah_data, subset=Individual=="H1")
+gah_data_c1 <- subset(gah_data, subset=Individual=="C1")
+
+#obj <- append(organoid_data,gah_data)
+obj <- append(append(organoid_data,gah_data_h1),gah_data_c1)
+
+rm(organoid_data,gah_data,gah_data_h1,gah_data_c1)
+
+#select genes to use for finding integration anchors
+if (genes=="Var") {
+  obj.features <- SelectIntegrationFeatures(object.list = obj)
+  length(obj.features) 
+}
+if (genes=="No0") {
+  geneList <- c()
+  for(object in obj) {
+    geneList <- c(geneList,rownames(object@assays$RNA@counts)[rowSums(object@assays$RNA@counts)!=0])
+  }
+  obj.features <- unique(geneList)
+  length(obj.features)
+}
+if (genes=="19k") {
+  obj.features <- rownames(obj[[1]]@assays$RNA@counts)
+  length(obj.features)
+}
+
+#scale data and run pca
+obj <- lapply(X=obj, FUN=function(x) {
+  x <- ScaleData(x, features=obj.features, verbose=FALSE)
+  x <- RunPCA(x, features=obj.features, verbose=FALSE)
+})
+
+#find integration anchors
+if (dimred=="cca") {
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reduction="cca")
+}
+if (dimred=="pca") {
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reduction="rpca")
+}
+if (dimred=="ref") {
+  ref.data <- c(2,9) #H1-r2 and C1-r2 differentiated best
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reference=ref.data,
+                                        reduction="rpca")
+}
+
+#integrate data
+integrate <- IntegrateData(anchorset=obj.anchors,
+                           normalization.method="LogNormalize",
+                           k.weight=kweigh)
+
+#regress out unwanted variables
+if (regout=="reg") {
+  integrate <- ScaleData(integrate, vars.to.regress=c("nCount_RNA","percent.mt"))
+}
+if (regout=="non") {
+  integrate <- ScaleData(integrate, vars.to.regress=NULL, verbose=FALSE)
+}
+
+#run pca
+integrate <- RunPCA(object=integrate,
+                    npcs=100,
+                    verbose=FALSE)
+
+#keep all dims that explaim more than 0.1% of variance
+pva <- integrate@reductions$pca@stdev^2/integrate@reductions$pca@misc$total.variance
+ndim <- length(which(pva>=0.001))
+print(ndim)
+
+#run umap
+integrate <- RunUMAP(integrate,
+                     dims=1:ndim)
+
+#save data
+saveRDS(integrate, file=paste0("./data/integrated/06_combined-data-gah-osteo",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+
+#clear variables
+rm(genes,dimred,kweigh,regout)
+rm(obj,obj.features,obj.anchors,integrate,pva,ndim)
+
+```
+
+```{r}
+
+#visualize data
+integrate <- readRDS(file=paste0("./data/integrated/06_combined-data-gah-osteo",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+DimPlot(integrate,
+        group.by="ChondroStage",
+        reduction="umap") +
+  labs(x="UMAP1",y="UMAP2")
+DimPlot(integrate,
+        group.by="ChondroStage",
+        split.by="Species",
+        reduction="umap") +
+  labs(x="UMAP1",y="UMAP2")
+
+```
+
+Integrate current study data with pilot differentiation data (chondro+osteo only)
+
+```{r}
+
+#define parameters for integrated data
+
+#filter <- ""
+#filter <- ".filterL"
+filter <- ".filterC"
+
+set <- "chond-ind"  #all chondrogenic cells
+
+genes <- "Var"  #features that are repeatedly variable across datasets for integration
+#genes <- "No0"  #all genes that have at least 1 UMI count across samples
+#genes <- "19k"  #all 19397 genes
+
+dimred <- "cca"
+#dimred <- "pca"
+#dimred <- "ref"
+
+kweigh <- 50
+#kweigh <- 100
+
+regout <- "reg" #this takes a long time when genes=No0
+#regout <- "non"
+
+```
+
+```{r, eval=FALSE}
+
+#Integrate all cells (across individuals)
+
+organoid_data <- readRDS(paste0("./data/06_data",filter,".log.",set,".rds"))
+gah_data  <- readRDS("./data/external/gah_data_chondroosteo.rds")
+
+#subset gah data by individuals
+gah_data_h1 <- subset(gah_data, subset=Individual=="H1")
+gah_data_c1 <- subset(gah_data, subset=Individual=="C1")
+
+#obj <- append(organoid_data,gah_data)
+obj <- append(append(organoid_data,gah_data_h1),gah_data_c1)
+
+rm(organoid_data,gah_data,gah_data_h1,gah_data_c1)
+
+#select genes to use for finding integration anchors
+if (genes=="Var") {
+  obj.features <- SelectIntegrationFeatures(object.list = obj)
+  length(obj.features) 
+}
+if (genes=="No0") {
+  geneList <- c()
+  for(object in obj) {
+    geneList <- c(geneList,rownames(object@assays$RNA@counts)[rowSums(object@assays$RNA@counts)!=0])
+  }
+  obj.features <- unique(geneList)
+  length(obj.features)
+}
+if (genes=="19k") {
+  obj.features <- rownames(obj[[1]]@assays$RNA@counts)
+  length(obj.features)
+}
+
+#scale data and run pca
+obj <- lapply(X=obj, FUN=function(x) {
+  x <- ScaleData(x, features=obj.features, verbose=FALSE)
+  x <- RunPCA(x, features=obj.features, verbose=FALSE)
+})
+
+#find integration anchors
+if (dimred=="cca") {
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reduction="cca")
+}
+if (dimred=="pca") {
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reduction="rpca")
+}
+if (dimred=="ref") {
+  ref.data <- c(2,9) #H1-r2 and C1-r2 differentiated best
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reference=ref.data,
+                                        reduction="rpca")
+}
+
+#integrate data
+integrate <- IntegrateData(anchorset=obj.anchors,
+                           normalization.method="LogNormalize",
+                           k.weight=kweigh)
+
+#regress out unwanted variables
+if (regout=="reg") {
+  integrate <- ScaleData(integrate, vars.to.regress=c("nCount_RNA","percent.mt"))
+}
+if (regout=="non") {
+  integrate <- ScaleData(integrate, vars.to.regress=NULL, verbose=FALSE)
+}
+
+#run pca
+integrate <- RunPCA(object=integrate,
+                    npcs=100,
+                    verbose=FALSE)
+
+#keep all dims that explaim more than 0.1% of variance
+pva <- integrate@reductions$pca@stdev^2/integrate@reductions$pca@misc$total.variance
+ndim <- length(which(pva>=0.001))
+print(ndim)
+
+#run umap
+integrate <- RunUMAP(integrate,
+                     dims=1:ndim)
+
+#save data
+saveRDS(integrate, file=paste0("./data/integrated/06_combined-data-gah-chondroosteo",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+
+#clear variables
+rm(genes,dimred,kweigh,regout)
+rm(obj,obj.features,obj.anchors,integrate,pva,ndim)
+
+```
+
+```{r}
+
+#visualize data
+integrate <- readRDS(file=paste0("./data/integrated/06_combined-data-gah-chondroosteo",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+DimPlot(integrate,
+        group.by="ChondroStage",
+        reduction="umap") +
+  labs(x="UMAP1",y="UMAP2")
+DimPlot(integrate,
+        group.by="ChondroStage",
+        split.by="Species",
+        reduction="umap") +
+  labs(x="UMAP1",y="UMAP2")
 
 ```
 

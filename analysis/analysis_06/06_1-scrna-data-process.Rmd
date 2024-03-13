@@ -1,0 +1,967 @@
+---
+title: "scrna-data-process"
+author: "Genevieve Housman"
+date: "July 2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# scRNA-seq Analyses - Data Processing with Cell Ranger
+
+batch 1
+
+* 10x 3' HT targeting 28K cells x 2 lanes (24.9K singlets x 2) = 49.8K singlets expected total
+* 12 CellPlex Tags used = 4150 singlets expected per tag
+* 4 cell lines with 6 time points each = 2075 singlets expected per tag
+
+batch 2
+
+* 10x 3' targeting 5K cells x 4 lanes (4.6K singlets x 4) = 18.4K singlets expected total
+* 6 CellPlex Tags used = 3066 singlets expected per tag
+* 4 cell lines with 3 time points each = 1533 singlets expected per tag
+
+
+## Run Cell Ranger multi to process data
+
+cellranger v7.0.0
+
+* multi - used to call CellPlex tags
+
+  + align reads to human genome with ortho exon annotation (cellranger.batch1.h.sh, cellranger.batch2.h.sh)
+  + align reads to chimp genome with ortho exon annotation (cellranger.batch1.c.sh, cellranger.batch2.c.sh)
+  + cannot align reads to human/chimp combined genome because there are duplicate contig sequences (no duplicate ids) 
+
+* count - used to call species assignments
+
+  + align reads to human/chimp combined genome with ortho exon annotation
+
+References:
+
+* https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/algorithms/cellplex
+* https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/using/multi
+* https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/using/tutorial_cp
+* https://kb.10xgenomics.com/hc/en-us/articles/4431902905229-How-to-troubleshoot-Cell-Ranger-count-Segmentation-Fault-Duplicate-contigs-
+* https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/using/count
+* https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/using/tutorial_ct
+
+Data being examined comes from 4 humans and 4 chimpanzees.
+
+..
+..
+..
+FILL IN ADDITIONAL INFORMATION
+..
+..
+..
+
+For downstream analysis of 10X data, we need to:
+
+* process fastq files into count matrices
+* process count matrices for use in R
+
+..
+..
+..
+EDIT THE FOLLOWING TEXT
+..
+..
+..
+
+Fastq files were processed into count matrices (genes x cells) using cellranger 7.0.0.
+
+Three different cellranger references were made using the hg38 and panTro6 genomes and ortho-exon v2 annotation (completed by KB):
+
+1. human_genome_index: /project2/gilad/ghousman/references/cellranger7.0.0/HumanOrthoV2
+2. chimp_genome_index: /project2/gilad/ghousman/references/cellranger7.0.0/ChimpOrthoV2
+3. combined_genome_index: /project2/gilad/ghousman/references/cellranger7.0.0/HumanOrthoV2_and_ChimpOrthoV2
+
+Count matrices were made using each of the three different cellranger references (compeleted by GH):
+
+1. Reads were processed using human_genome_index.
+2. Reads were processed using chimp_genome_index.
+3. Reads were processed using combined_genome_index.
+
+Cellranger is bad at human/chimp assignments [see Housman et al. 2022 PLOS Genetics]. Thus, we take the cellranger cell assignment output when using combined_genome_index, and instead assign cells based on the ratio of resulting human-aligned UMIs per cells vs. the total number of aligned UMIs per cells. We use a cutoff ratio <= 0.1 to assign chimpanzee cells and a cutoff ratio >= 0.9 to assign human cells.
+
+Notes on what cellranger does to compute count matrices:
+
+* genome alignment
+	 + aligner (STAR) peforms splicing-aware alignment of reads to genome
+	 + transcript annotation (GTF) buckets reads into exonic/intronic/intergenic and whether reads align (confidently) to genome
+	 + [read = exonic if >=50% of it intersects an exon]
+	 + [read = intronic if it is non-exonic and intersects an intron]
+	 + [read = intergenic in all other cases]
+* MAPQ adjustment (MAPQ 255)
+   + for reads that align to a single exonic locus and to 1+ non-exonic loci, the exonic locus is prioritized and read is considered to be confidently mapped to exonic locus
+* transcriptome alignment
+	 + aligns exonic reads to annotated transcripts and looks for compatibility
+	 + read is mapped to transcriptome if: read that is compatible with exons of annotated transcript and aligned to same strand
+	 + read is uniquely (confidently) mapped to transcriptome if: read is compatible with a single gene annotation
+	 + [uniquely (confidently) mapped reads are only ones considered for UMI counting]
+* UMI counting
+	 + before counting UMIs, corrections for sequencing errors in UMI sequences are attempted
+	 + reads confidently mapped to transcriptome are grouped according to shared barcodes, UMIs, and gene annotations
+	 + filter 1: if two groups of reads have same barcode and gene, but UMIs differ by a single base (Hamming distance 1 apart), then one UMI was likely introduced by substitution error in sequencing, and UMI of less-supported read group is corrected to UMI with higher support
+	 + reads confidently mapped to transcriptome are grouped according to shared barcodes, UMIs (possibly corrected), and gene annotations
+	 + filter 2: if two or more groups of reads have same barcode and UMI, but different gene annotations, gene annotation with most supporting reads is kept for UMI counting and other read groups are discarded (ties for maximal read support: all read groups are discarded as gene cannot be confidently assigned)
+	 + each observed barcode-UMI-gene combination is recorded as UMI count in unfiltered feature-barcode matrix (number of reads supporting each counted UMI also recorded in molecule info file)
+* calling cell barcodes
+	 + [improved cell-calling algorithm that better identifies populations of low RNA content cells, especially when low RNA content cells are mixed into population of high RNA content cells, based on EmptyDrops method by Lun et al. 2018]
+	 + step 1:
+		  - uses cutoff based on total UMI counts of each barcode to identify cells - identifies primary mode of high RNA content cells
+		  - (takes as input expected number of recovered cells, N)
+		  - (let m be 99th percentile of top N barcodes by total UMI counts)
+		  - (all barcodes whose total UMI counts exceed m/10 are called as cells)
+	 + step 2:
+		  - uses RNA profile of each remaining barcode to determine if it is "empty" or cell containing partition - captures low RNA content cells whose total UMI counts may be similar to empty GEMs
+		  - (creates background model of RNA profiles from selected barcodes - multinomial distribution over genes - using Simple Good-Turing smoothing to provide a non-zero model estimate for genes not observed in representative empty GEM set)
+		  - (RNA profile of each barcode not called as cell in step 1 is compared to background model)
+		  - (barcodes whose RNA profile strongly disagrees with background model are added to set of positive cell calls)
+		  - (to remedy cases in which set of barcodes called as cells does not match desired set of barcodes based on visual inspection: re-run count/reanalyze with --force-cells option, select desired barcodes from raw feature-barcode matrix in downstream analysis, or select custom barcodes in reanalyze using --barcodes)
+* estimating multiplet rates
+	 + cell-associated barcodes are classified as species1 or species2 based on which genome has more total UMI counts for that barcode
+	 + cell-associated barcodes with total UMI counts that exceed the 10th percentile of the distributions for both species1 and species2 are classified as multiplets
+	 + computes inferred multiplet rate by estimating the total number of multiplets (including (species1, species1) and (species2, species2))
+		  - estimates via ML the total number of multiplet GEMs from the observed multiplets and the inferred ratio of species1 to species2 cells
+		  - if ratio is 1:1, the inferred multiplet rate is approximately twice the observed (species1, species2) multiplets
+
+..
+..
+..
+ADD DESCRIPTION OF CELLPLEX
+..
+..
+..
+
+Processed data using CMO threshold of 0.6 (instead of the default of 0.9)
+
+```{bash, eval=FALSE}
+
+#process reads using human genome and ortho exon annotation
+cd /project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/scRNA
+sbatch ./../chondro-time-evo/code/cellranger_06/cellranger.batch1.h.sh
+sbatch ./../chondro-time-evo/code/cellranger_06/cellranger.batch2.h.sh
+
+#process reads using chimp genome and ortho exon annotation
+cd /project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/scRNA
+sbatch ./../chondro-time-evo/code/cellranger_06/cellranger.batch1.c.sh
+sbatch ./../chondro-time-evo/code/cellranger_06/cellranger.batch2.c.sh
+
+#process reads using human/chimp combined genome and ortho exon annotation
+cd /project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/scRNA
+sbatch ./../chondro-time-evo/code/cellranger_06/cellranger.batch1.hc.sh
+sbatch ./../chondro-time-evo/code/cellranger_06/cellranger.batch2.hc.sh
+
+```
+
+
+## Examine CMO assignments
+
+https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/output/cellplex
+
+assignment_confidence_table.csv
+A table that contains all information from the tag assignment algorithm for each cell-associated barcode, in CSV format. More details below.
+
+tag_calls_summary.csv
+A table that summarizes the multiplexing results, including the number of cells assigned no tag, one tag, and more than one tag, in CSV format. More details below.
+
+tag_calls_per_cell.csv
+For each cell-associated barcode assigned a tag, this table summarizes the tags assigned and the UMI counts per tag, in CSV format. More details below.
+
+barcode_sample_assignments.csv
+If barcode-sample-assignment was specified in the multi config CSV, a duplicate of the input barcode-sample assignment CSV file will be generated.
+
+NOTE: cellranger multi only calls a tag if the probability of assignment was greater than 90%
+
+Should also check different probability thresholds
+
+```{r}
+library(tidyverse)
+library(stringi)
+library(Seurat)
+library(Azimuth)
+library(SeuratData)
+library(patchwork)
+```
+
+```{r}
+cp_threshold_assignment <- function(data, threshold){
+  data %>% 
+    select(Row, Barcode) %>% 
+    full_join(  
+      data %>% 
+      pivot_longer(
+        cols = c(contains("CMO"), Multiplet, Blank),
+        names_to = "Tag",
+        values_to = "Probability"
+      ) %>% 
+      filter(Probability > threshold) %>% 
+      #filter(!Tag %in% c("Blank", "Multiplet")) %>% 
+      group_by(Barcode) %>% 
+      #summarise(Assigned_Tags = paste(Tag, collapse = "|")),
+      summarise(Assigned_Tags = paste(Tag, collapse = "|"), Assigned_Probability = Probability),
+      by = "Barcode"
+    ) %>% 
+    replace_na(list(Assigned_Tags = "Unassigned"))
+}
+```
+
+Results of compare Cellplex assignments across different parameters:
+(batch 1 total barcodes = 48320)
+(batch 2 total barcodes = 13915)
+
+* Cell Assignments Total
+  + Batch 1: HumanRef_0.9 = 48163, ChimpRef_0.9 = 46457, ComboRef_0.9 = 44257
+  + Batch 1: HumanRef_0.6 = 48163, ChimpRef_0.6 = 46457, ComboRef_0.6 = 44257
+  + Batch 1: HumanRef_0.5 = 48163, ChimpRef_0.5 = 46457, ComboRef_0.5 = 44257
+  + Batch 2: HumanRef_0.9 = 13739, ChimpRef_0.9 = 13274, ComboRef_0.9 = 11661
+  + Batch 2: HumanRef_0.6 = 13739, ChimpRef_0.6 = 13274, ComboRef_0.6 = 11661
+  + Batch 2: HumanRef_0.5 = 13739, ChimpRef_0.5 = 13274, ComboRef_0.5 = 11661
+* Cell Assignments Unassigned
+  + Batch 1: HumanRef_0.9 = 21204, ChimpRef_0.9 = 20402, ComboRef_0.9 = 18446
+  + Batch 1: HumanRef_0.6 =  6996, ChimpRef_0.6 =  6768, ComboRef_0.6 =  5899
+  + Batch 1: HumanRef_0.5 =  3471, ChimpRef_0.5 =  3364, ComboRef_0.5 =  2805
+  + Batch 2: HumanRef_0.9 = 13013, ChimpRef_0.9 = 12619, ComboRef_0.9 = 10477
+  + Batch 2: HumanRef_0.6 =  9494, ChimpRef_0.6 =  9581, ComboRef_0.6 =  5993
+  + Batch 2: HumanRef_0.5 =  8427, ChimpRef_0.5 =  8398, ComboRef_0.5 =  4491
+* Cell Assignments Blanks
+  + Batch 1: HumanRef_0.9 =  1047, ChimpRef_0.9 =   969, ComboRef_0.9 =  1023
+  + Batch 1: HumanRef_0.6 =  2865, ChimpRef_0.6 =  2735, ComboRef_0.6 =  2695 
+  + Batch 1: HumanRef_0.5 =  3568, ChimpRef_0.5 =  3411, ComboRef_0.5 =  3342
+  + Batch 2: HumanRef_0.9 =     0, ChimpRef_0.9 =     0, ComboRef_0.9 =     0
+  + Batch 2: HumanRef_0.6 =     0, ChimpRef_0.6 =     0, ComboRef_0.6 =     0
+  + Batch 2: HumanRef_0.5 =     0, ChimpRef_0.5 =     0, ComboRef_0.5 =     0
+* Cell Assignments Multiplets
+  + Batch 1: HumanRef_0.9 =  2644, ChimpRef_0.9 =  2525, ComboRef_0.9 =  2472
+  + Batch 1: HumanRef_0.6 =  5005, ChimpRef_0.6 =  4772, ComboRef_0.6 =  4614
+  + Batch 1: HumanRef_0.5 =  5740, ChimpRef_0.5 =  5457, ComboRef_0.5 =  5266
+  + Batch 2: HumanRef_0.9 =     0, ChimpRef_0.9 =     0, ComboRef_0.9 =     0
+  + Batch 2: HumanRef_0.6 =     0, ChimpRef_0.6 =     0, ComboRef_0.6 =     0
+  + Batch 2: HumanRef_0.5 =     1, ChimpRef_0.5 =     0, ComboRef_0.5 =     2
+* Cell Assignments Singlets
+  + Batch 1: HumanRef_0.9 = 23268, ChimpRef_0.9 = 22561, ComboRef_0.9 = 23316
+  + Batch 1: HumanRef_0.6 = 33297, ChimpRef_0.6 = 32182, ComboRef_0.6 = 31649
+  + Batch 1: HumanRef_0.5 = 35384, ChimpRef_0.5 = 34225, ComboRef_0.5 = 32844
+  + Batch 2: HumanRef_0.9 =   726, ChimpRef_0.9 =   655, ComboRef_0.9 =  1184
+  + Batch 2: HumanRef_0.6 =  4245, ChimpRef_0.6 =  3693, ComboRef_0.6 =  5668
+  + Batch 2: HumanRef_0.5 =  5311, ChimpRef_0.5 =  4876, ComboRef_0.5 =  7168
+
+```{r}
+
+#batch 1 using human reference
+x <- read.csv("../scRNA/human_chimp_chondro_time_batch1_h_06/outs/multi/multiplexing_analysis/assignment_confidence_table.csv")
+dim(x)
+dplyr::count(x, Assignment)
+x_2 <- cp_threshold_assignment(data=x, threshold=0.5)
+dim(x_2)
+dplyr::count(x_2, Assigned_Tags)
+x_3 <- cp_threshold_assignment(data=x, threshold=0.9)
+dim(x_3)
+dplyr::count(x_3, Assigned_Tags)
+barcode_assign_b1 <- merge(x[,c("Barcode","Assignment","Assignment_Probability")], x_2[,c(2:4)], by="Barcode", all=TRUE)
+barcode_assign_b1 <- merge(barcode_assign_b1, x_3[,c(2:4)], by="Barcode", all=TRUE)
+colnames(barcode_assign_b1)[2:7] <- c("HumanRef_0.6","HumanRef_0.6_AssignProb","HumanRef_0.5","HumanRef_0.5_AssignProb","HumanRef_0.9","HumanRef_0.9_AssignProb")
+
+#batch 1 using chimp reference
+x <- read.csv("../scRNA/human_chimp_chondro_time_batch1_c_06/outs/multi/multiplexing_analysis/assignment_confidence_table.csv")
+dim(x)
+dplyr::count(x, Assignment)
+x_2 <- cp_threshold_assignment(data=x, threshold=0.5)
+dim(x_2)
+x_3 <- cp_threshold_assignment(data=x, threshold=0.9)
+dim(x_3)
+dplyr::count(x_3, Assigned_Tags)
+dplyr::count(x_2, Assigned_Tags)
+barcode_assign_b1 <- merge(barcode_assign_b1, x[,c("Barcode","Assignment","Assignment_Probability")], by="Barcode", all=TRUE)
+barcode_assign_b1 <- merge(barcode_assign_b1, x_2[,c(2:4)], by="Barcode", all=TRUE)
+barcode_assign_b1 <- merge(barcode_assign_b1, x_3[,c(2:4)], by="Barcode", all=TRUE)
+colnames(barcode_assign_b1)[8:13] <- c("ChimpRef_0.6","ChimpRef_0.6_AssignProb","ChimpRef_0.5","ChimpRef_0.5_AssignProb","ChimpRef_0.9","ChimpRef_0.9_AssignProb")
+
+#batch 1 using human-chimp combined reference
+x <- read.csv("../scRNA/human_chimp_chondro_time_batch1_hc_06/outs/multi/multiplexing_analysis/assignment_confidence_table.csv")
+dim(x)
+dplyr::count(x, Assignment)
+x_2 <- cp_threshold_assignment(data=x, threshold=0.5)
+dim(x_2)
+dplyr::count(x_2, Assigned_Tags)
+x_3 <- cp_threshold_assignment(data=x, threshold=0.9)
+dim(x_3)
+dplyr::count(x_3, Assigned_Tags)
+barcode_assign_b1 <- merge(barcode_assign_b1, x[,c("Barcode","Assignment","Assignment_Probability")], by="Barcode", all=TRUE)
+barcode_assign_b1 <- merge(barcode_assign_b1, x_2[,c(2:4)], by="Barcode", all=TRUE)
+barcode_assign_b1 <- merge(barcode_assign_b1, x_3[,c(2:4)], by="Barcode", all=TRUE)
+colnames(barcode_assign_b1)[14:19] <- c("ComboRef_0.6","ComboRef_0.6_AssignProb","ComboRef_0.5","ComboRef_0.5_AssignProb","ComboRef_0.9","ComboRef_0.9_AssignProb")
+
+#batch 2 using human reference
+x <- read.csv("../scRNA/human_chimp_chondro_time_batch2_h_06/outs/multi/multiplexing_analysis/assignment_confidence_table.csv")
+dim(x)
+dplyr::count(x, Assignment)
+x_2 <- cp_threshold_assignment(data=x, threshold=0.5)
+dim(x_2)
+dplyr::count(x_2, Assigned_Tags)
+x_3 <- cp_threshold_assignment(data=x, threshold=0.9)
+dim(x_3)
+dplyr::count(x_3, Assigned_Tags)
+barcode_assign_b2 <- merge(x[,c("Barcode","Assignment","Assignment_Probability")], x_2[,c(2:4)], by="Barcode", all=TRUE)
+barcode_assign_b2 <- merge(barcode_assign_b2, x_3[,c(2:4)], by="Barcode", all=TRUE)
+colnames(barcode_assign_b2)[2:7] <- c("HumanRef_0.6","HumanRef_0.6_AssignProb","HumanRef_0.5","HumanRef_0.5_AssignProb","HumanRef_0.9","HumanRef_0.9_AssignProb")
+
+#batch 2 using chimp reference
+x <- read.csv("../scRNA/human_chimp_chondro_time_batch2_c_06/outs/multi/multiplexing_analysis/assignment_confidence_table.csv")
+dim(x)
+dplyr::count(x, Assignment)
+x_2 <- cp_threshold_assignment(data=x, threshold=0.5)
+dim(x_2)
+dplyr::count(x_2, Assigned_Tags)
+x_3 <- cp_threshold_assignment(data=x, threshold=0.9)
+dim(x_3)
+dplyr::count(x_3, Assigned_Tags)
+barcode_assign_b2 <- merge(barcode_assign_b2, x[,c("Barcode","Assignment","Assignment_Probability")], by="Barcode", all=TRUE)
+barcode_assign_b2 <- merge(barcode_assign_b2, x_2[,c(2:4)], by="Barcode", all=TRUE)
+barcode_assign_b2 <- merge(barcode_assign_b2, x_3[,c(2:4)], by="Barcode", all=TRUE)
+colnames(barcode_assign_b2)[8:13] <- c("ChimpRef_0.6","ChimpRef_0.6_AssignProb","ChimpRef_0.5","ChimpRef_0.5_AssignProb","ChimpRef_0.9","ChimpRef_0.9_AssignProb")
+
+#batch 2 using human-chimp combined reference
+x <- read.csv("../scRNA/human_chimp_chondro_time_batch2_hc_06/outs/multi/multiplexing_analysis/assignment_confidence_table.csv")
+dim(x)
+dplyr::count(x, Assignment)
+x_2 <- cp_threshold_assignment(data=x, threshold=0.5)
+dim(x_2)
+dplyr::count(x_2, Assigned_Tags)
+x_3 <- cp_threshold_assignment(data=x, threshold=0.9)
+dim(x_3)
+dplyr::count(x_3, Assigned_Tags)
+barcode_assign_b2 <- merge(barcode_assign_b2, x[,c("Barcode","Assignment","Assignment_Probability")], by="Barcode", all=TRUE)
+barcode_assign_b2 <- merge(barcode_assign_b2, x_2[,c(2:4)], by="Barcode", all=TRUE)
+barcode_assign_b2 <- merge(barcode_assign_b2, x_3[,c(2:4)], by="Barcode", all=TRUE)
+colnames(barcode_assign_b2)[14:19] <- c("ComboRef_0.6","ComboRef_0.6_AssignProb","ComboRef_0.5","ComboRef_0.5_AssignProb","ComboRef_0.9","ComboRef_0.9_AssignProb")
+
+rm(x,x_2,x_3)
+
+dim(barcode_assign_b1)
+dim(barcode_assign_b2)
+
+```
+
+For now, go with cell counts using 0.6 threshold and the combined human-chimp reference
+
+Cell Assignments Singlets
+* Batch 1: 31049 (vs. 33297 using human reference / 32182 using chimp reference)
+* Batch 2:  5668 (vs.  4245 using human reference /  3693 using chimp reference)
+
+```{r}
+
+dim(barcode_assign_b1)
+dplyr::count(barcode_assign_b1, HumanRef_0.6)
+dplyr::count(barcode_assign_b1, ChimpRef_0.6)
+dplyr::count(barcode_assign_b1, ComboRef_0.6)
+
+dim(barcode_assign_b2)
+dplyr::count(barcode_assign_b2, HumanRef_0.6)
+dplyr::count(barcode_assign_b2, ChimpRef_0.6)
+dplyr::count(barcode_assign_b2, ComboRef_0.6)
+
+```
+
+Save CMO assignment data.
+
+Batch 1
+* CMO301 = H1_C1_d00
+* CMO302 = H1_C1_d0
+* CMO303 = H1_C1_m_d7
+* CMO304 = H1_C1_m_d14
+* CMO305 = H1_C1_c_d7
+* CMO306 = H1_C1_c_d14
+* CMO307 = H2_C4_d00
+* CMO308 = H2_C4_d0
+* CMO309 = H2_C4_m_d7,
+* CMO310 = H2_C4_m_d14
+* CMO311 = H2_C4_c_d7
+* CMO312 = H2_C4_c_d14
+
+Batch 2
+* CMO301 = H5_C5_d0
+* CMO302 = H5_C5_c_d7
+* CMO303 = H5_C5_c_d14
+* CMO304 = H3_C2_d0
+* CMO305 = H3_C2_c_d7
+* CMO306 = H3_C2_c_d14
+
+```{r}
+
+saveRDS(barcode_assign_b1, file="./data/06_cmo_barcode_assign_batch1.rds")
+saveRDS(barcode_assign_b2, file="./data/06_cmo_barcode_assign_batch2.rds")
+
+```
+
+
+## Examine species assignments
+
+```{r assess species assignments, eval=FALSE, echo=TRUE}
+
+batch <- c("batch1","batch2")
+sample_tot <- c("H1_C1_d00","H1_C1_d0","H1_C1_m_d7","H1_C1_m_d14","H1_C1_c_d7","H1_C1_c_d14",
+                "H2_C4_d00","H2_C4_d0","H2_C4_m_d7","H2_C4_m_d14","H2_C4_c_d7","H2_C4_c_d14",
+                "H5_C5_d0","H5_C5_c_d7","H5_C5_c_d14","H3_C2_d0","H3_C2_c_d7","H3_C2_c_d14")
+
+#Load species assignments
+spp <- data.frame()
+i <- 1
+while (i <= length(batch)) {
+  
+  print(i)
+  
+  dir <- paste0('./../scRNA/human_chimp_chondro_time_',batch[i],'_hc_06/outs/per_sample_outs/')
+  
+  if(batch[i]=="batch1") { sample_sub <- sample_tot[1:12] }
+  if(batch[i]=="batch2") { sample_sub <- sample_tot[13:18] }
+  
+  j <- 1
+  
+  while (j <= length(sample_sub)) {
+    
+    print(paste0("-",j))
+  
+    #Define directory containing data from one collection
+    dir_data <- paste0(dir,sample_sub[j],'/count/analysis/')
+    
+    #Load summary metrics from one collection
+    temp <- read.csv(file=paste0(dir_data,'gem_classification.csv'))
+    
+    #Process cellranger metrics
+    temp$barcode <- sapply(temp$barcode, gsub, pattern="-1", replacement="")
+    temp$call <- sapply(temp$call, gsub, pattern="HumanOrthoV2", replacement="Human")
+    temp$call <- sapply(temp$call, gsub, pattern="ChimpOrthoV2", replacement="Chimp")
+    temp$Collection.Name <- sample_sub[j]
+    
+    #Determine new species assignments
+  
+    #calculate total number of umis
+    temp$TotalOrthoV2 <- temp$HumanOrthoV2 + temp$ChimpOrthoV2
+    
+    #calculate ratio of human umis to total umis
+    temp$RatioOrthoV2 <- temp$HumanOrthoV2 / temp$TotalOrthoV2
+    
+    #define RatioOrthoV2 cutoffs
+    c_cutoff <- 0.1
+    h_cutoff <- 0.9
+    
+    #assign new human/chimp cells
+    temp$NEWcall <- "Multiplet"
+    temp$NEWcall[which(temp$RatioOrthoV2>=h_cutoff)] <- "Human"
+    temp$NEWcall[which(temp$RatioOrthoV2<=c_cutoff)] <- "Chimp"
+    
+    #add batch information
+    temp$batch <- batch[i]
+    
+    #Save revised csv
+    write.csv(temp,file=paste0(dir,sample_sub[j],'/count/analysis/gem_classification_GHedit.csv'))
+  
+  
+    #Add data to dataframe
+    spp <- rbind(spp,temp)
+    
+    j <- j+1
+  
+  }
+  
+  i <- i+1
+}
+rm(dir_data,temp)
+rm(h_cutoff,c_cutoff)
+
+```
+
+Do not use new call data right now, as it looks worse than standard cellranger results.
+
+..
+..
+..
+COME BACK AND DECIDE ON THIS
+..
+..
+..
+
+```{r}
+
+dplyr::count(spp,call)
+#dplyr::count(spp,NEWcall)
+
+```
+
+Save species assignment data
+
+```{r}
+
+saveRDS(spp, file="./data/06_spp_assign.rds")
+
+```
+
+
+### Processing count matrices
+
+Compile 10X data using seurat.
+
+Each dataset being evaluated comprises gene count data that were seperately calculated using both the hg38 human genome and the panTro6 chimpanzee genome, as well as the corresponding ortho-exon annotation in cellranger. Species-specific assignments were determined using human-chimpanzee genome combination with ortho-exon annotation.
+
+```{bash, eval=FALSE, echo=TRUE}
+##easties to run these scripts on the cluster
+#cd /project2/gilad/ghousman/skeletal-human-chimp/human-chimp-skeletal-scRNA
+#sinteractive --mem=24g --time=12:00:00 --partition=broadwl
+#module load R/4.2.0
+#R
+```
+
+```{r load libraries, eval=FALSE, echo=TRUE}
+
+library(Seurat)
+library(dplyr)
+library(stringi)
+library(stringr)
+library(ggplot2)
+library(colorspace)
+library(RColorBrewer)
+
+```
+
+```{r load batch information, eval=FALSE, echo=TRUE}
+
+#Load batch info
+#batch <- read.csv(file='./data/scrna-batch.csv', header=TRUE, sep=",")
+
+#batch <- as.data.frame(t(c("1-C","1","Chondrocyte","GHO-3","H1-C","H23555","M",22,"C1-C","C8861","M",16)))
+#colnames(batch) <- c("Pooled_Sample_Name","Batch","Cell_Type","Sample_Name_at_Core",
+#                     "Human_Sample_in_Pool","Human_Individual_in_Pool","Human_Sex_in_Pool","Human_Age_in_Pool",
+#                     "Chimp_Sample_in_Pool","Chimp_Individual_in_Pool","Chimp_Sex_in_Pool","Chimp_Age_in_Pool")
+
+batch <- c("batch1","batch2")
+sample_tot <- c("H1_C1_d00","H1_C1_d0","H1_C1_m_d7","H1_C1_m_d14","H1_C1_c_d7","H1_C1_c_d14",
+                "H2_C4_d00","H2_C4_d0","H2_C4_m_d7","H2_C4_m_d14","H2_C4_c_d7","H2_C4_c_d14",
+                "H5_C5_d0","H5_C5_c_d7","H5_C5_c_d14","H3_C2_d0","H3_C2_c_d7","H3_C2_c_d14")
+spp <- readRDS(file="./data/06_spp_assign.rds")
+
+```
+
+```{r process scRNA data - isolate human and chimp cells, eval=FALSE, echo=TRUE}
+
+#Isolate human and chimp cells for each collection
+i <- 1
+while (i <= length(batch)) {
+
+  print(paste0("Processing ",batch[i]))
+  
+  #(0)define directory
+    dir_h.data <- paste0('./../scRNA/human_chimp_chondro_time_',batch[i],'_h_06/outs/multi/count')
+    dir_c.data <- paste0('./../scRNA/human_chimp_chondro_time_',batch[i],'_c_06/outs/multi/count')
+    
+  #(1)load data
+    print("Loading data")
+    h.data <- Read10X(data=paste0(dir_h.data,"/raw_feature_bc_matrix"))
+    c.data <- Read10X(data=paste0(dir_c.data,"/raw_feature_bc_matrix"))
+    
+  #(2)create seurat objects
+    print("Making seurat object")
+    h.dat <- CreateSeuratObject(counts=h.data$`Gene Expression`)
+    c.dat <- CreateSeuratObject(counts=c.data$`Gene Expression`)
+    
+  #(3)view details of seurat objects
+    h.dat #19397 features, 3274414 samples (batch 1) / 2496148 samples (batch 2)
+    c.dat #19397 features, 3274414 samples (batch 1) / 2496148 samples (batch 2)
+    
+  #(4)clear raw data from workspace
+    rm(h.data,c.data)
+  
+  #(5)add species assignments to data
+    print("Adding species assignments")
+
+    temp_barcode <- sapply(rownames(h.dat@meta.data), gsub, pattern="-1", replacement="")
+    
+    m <- match(sapply(rownames(h.dat@meta.data),
+                      gsub, pattern="-1", replacement=""),
+               spp$barcode[which(spp$batch==batch[i])])
+    if(any(is.na(m))) cat("Not all barcodes are in data.\n")
+    h.dat <- AddMetaData(h.dat, spp[m,]$call, col.name="Species")
+    #h.dat <- AddMetaData(h.dat, spp[m,]$NEWcall, col.name="Species_New")
+
+    m <- match(sapply(rownames(c.dat@meta.data),
+                      gsub, pattern="-1", replacement=""),
+               spp$barcode[which(spp$batch==batch[i])])
+    if(any(is.na(m))) cat("Not all barcodes are in data.\n")
+    c.dat <- AddMetaData(c.dat, spp[m,]$call, col.name="Species")
+    #c.dat <- AddMetaData(c.dat, spp[m,]$NEWcall, col.name="Species_New")
+    
+  #(6)view details of species assignments
+    print(table(h.dat@meta.data$Species, useNA="always"))
+    print(table(c.dat@meta.data$Species, useNA="always"))
+    #table(h.dat@meta.data$Species_New, useNA="always")
+    #table(c.dat@meta.data$Species_New, useNA="always")
+  
+  #(7)subset data to only include human and chimp cells/genes
+    print("Subsetting data")
+    h.dat.spp <- subset(h.dat, subset=Species=="Human")
+    c.dat.spp <- subset(c.dat, subset=Species=="Chimp")
+ 
+  #(8)create merged object
+    print("Merging and saving data")
+    h.c.dat.spp <- merge(h.dat.spp,c.dat.spp)
+    saveRDS(h.c.dat.spp, file=paste0('./data/06_h.c.dat.spp.',batch[i],'.rds'))
+
+  #(9)remove unnecessary variables
+    rm(h.dat,c.dat,h.dat.spp,c.dat.spp)
+    rm(dir_h.data,dir_c.data)
+
+  i <- i+1
+  
+}
+
+rm(i,j,m)
+rm(sample_sub,temp_barcode)
+rm(h.c.dat.spp)
+
+```
+
+Add metadata to count matrices.
+
+```{r process scRNA data - add mitochondrial metadata, eval=FALSE, echo=TRUE}
+
+#Read in files
+data <- list()
+for (i in 1:length(batch)) {
+  print(i)
+  data[[i]] <- readRDS(paste0("./data/06_h.c.dat.spp.",batch[i],".rds"))
+}
+
+#Identify mitochondrial genes (should be 11 genes total) and add percent of mitochondrial reads vs. total reads
+#which(sapply(data[[i]]@assays$RNA@counts@Dimnames[[1]], stri_count_regex, pattern="MT-")==1)
+#MT-CO2   16579
+#MT-ND2   16605
+#MT-ND5   16613
+#MT-CO1   16624
+#MT-ND3   16646
+#MT-ND4   16671
+#MT-ND1   16673
+#MT-ATP6  16679
+#MT-CO3   16701
+#MT-ND4L  17416
+#MT-ATP8  17848
+#INMT-MINDY4  18503 --- not actually a mitochondrial gene
+#MT-CYB             --- not in this dataset
+mito <- c("MT-ATP6","MT-ATP8","MT-CO1","MT-CO2","MT-CO3","MT-ND1","MT-ND2","MT-ND3","MT-ND4","MT-ND4L","MT-ND5")
+for (i in 1:length(data)) { data[[i]]$percent.mt <- PercentageFeatureSet(data[[i]], features=mito) }
+
+```
+
+```{r load files with other relevant metadata, eval=FALSE, echo=TRUE}
+
+#Load batch data
+#batch <- read.csv(file='./data/scrna-batch-reformat.csv', header=TRUE, sep=",")
+#batch[,c(1:7,9:10,21,24:25)] <- lapply(batch[,c(1:7,9:10,21,24:25)], function(x) as.character(x)) #names, sex, dates
+#batch[,c(8,11:20,22:23,25:26)] <- lapply(batch[,c(8,11:20,22:23,25:26)], function(x) as.numeric(as.character(x))) #numeric values only
+
+#Load CMO assignment data
+barcode_assign_b1 <- readRDS("./data/06_cmo_barcode_assign_batch1.rds")
+barcode_assign_b2 <- readRDS("./data/06_cmo_barcode_assign_batch2.rds")
+
+rownames(barcode_assign_b1) <- barcode_assign_b1$Barcode
+rownames(barcode_assign_b2) <- barcode_assign_b2$Barcode
+
+```
+
+```{r process scRNA data - add other relevant metadata, eval=FALSE, echo=TRUE}
+
+#Add additional details to list
+
+#collection
+for (i in 1:length(data)) { data[[i]]$Collection <- i }
+
+#cmo assignments
+data[[1]] <- AddMetaData(data[[1]], barcode_assign_b1)
+data[[2]] <- AddMetaData(data[[2]], barcode_assign_b2)
+
+##cell type anticipated based on stage of differentiation at collection
+#for (i in c(1,4,7,10,13,16,19)) { data[[i]]$Cell.Type <- "iPSC" }
+#for (i in c(2,5,8,11,14,17,20)) { data[[i]]$Cell.Type <- "MSC" }
+#for (i in c(3,6,9,12,15,18,21)) { data[[i]]$Cell.Type <- "Osteogenic" }
+
+#individuals pooled together in collection
+for (i in 1:length(data)) { data[[i]]$Pair <- NA }
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.6=="CMO301")] <- "H1+C1"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.6=="CMO302")] <- "H1+C1"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.6=="CMO303")] <- "H1+C1"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.6=="CMO304")] <- "H1+C1"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.6=="CMO305")] <- "H1+C1"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.6=="CMO306")] <- "H1+C1"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.6=="CMO307")] <- "H2+C4"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.6=="CMO308")] <- "H2+C4"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.6=="CMO309")] <- "H2+C4"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.6=="CMO310")] <- "H2+C4"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.6=="CMO311")] <- "H2+C4"
+data[[1]]$Pair[which(data[[1]]$ComboRef_0.6=="CMO312")] <- "H2+C4"
+data[[2]]$Pair[which(data[[2]]$ComboRef_0.6=="CMO301")] <- "H5+C5"
+data[[2]]$Pair[which(data[[2]]$ComboRef_0.6=="CMO302")] <- "H5+C5"
+data[[2]]$Pair[which(data[[2]]$ComboRef_0.6=="CMO303")] <- "H5+C5"
+data[[2]]$Pair[which(data[[2]]$ComboRef_0.6=="CMO304")] <- "H3+C2"
+data[[2]]$Pair[which(data[[2]]$ComboRef_0.6=="CMO305")] <- "H3+C2"
+data[[2]]$Pair[which(data[[2]]$ComboRef_0.6=="CMO306")] <- "H3+C2"
+
+#individual cell line used in collection
+for (i in 1:length(data)) { data[[i]]$Individual <- NA }
+data[[1]]$Individual[which(data[[1]]$Pair=="H1+C1" & data[[1]]$Species=="Human")] <- "H1"
+data[[1]]$Individual[which(data[[1]]$Pair=="H2+C4" & data[[1]]$Species=="Human")] <- "H2"
+data[[1]]$Individual[which(data[[1]]$Pair=="H1+C1" & data[[1]]$Species=="Chimp")] <- "C1"
+data[[1]]$Individual[which(data[[1]]$Pair=="H2+C4" & data[[1]]$Species=="Chimp")] <- "C4"
+data[[2]]$Individual[which(data[[2]]$Pair=="H5+C5" & data[[2]]$Species=="Human")] <- "H5"
+data[[2]]$Individual[which(data[[2]]$Pair=="H3+C2" & data[[2]]$Species=="Human")] <- "H3"
+data[[2]]$Individual[which(data[[2]]$Pair=="H5+C5" & data[[2]]$Species=="Chimp")] <- "C5"
+data[[2]]$Individual[which(data[[2]]$Pair=="H3+C2" & data[[2]]$Species=="Chimp")] <- "C2"
+
+#full cell line name used in collection
+for (i in 1:length(data)) { data[[i]]$CellLine <- NA }
+data[[1]]$CellLine[which(data[[1]]$Individual=="H1")] <- "H23555"
+data[[1]]$CellLine[which(data[[1]]$Individual=="C1")] <- "C8861"
+data[[1]]$CellLine[which(data[[1]]$Individual=="H2")] <- "H20157"
+data[[1]]$CellLine[which(data[[1]]$Individual=="C4")] <- "C40210"
+data[[2]]$CellLine[which(data[[2]]$Individual=="H5")] <- "H21792"
+data[[2]]$CellLine[which(data[[2]]$Individual=="C5")] <- "C40280"
+data[[2]]$CellLine[which(data[[2]]$Individual=="H3")] <- "H28126"
+data[[2]]$CellLine[which(data[[2]]$Individual=="C2")] <- "C3647"
+
+#sex of cell line used in collection
+for (i in 1:length(data)) { data[[i]]$Sex <- NA }
+data[[1]]$Sex[which(data[[1]]$Individual=="H1")] <- "male"
+data[[1]]$Sex[which(data[[1]]$Individual=="C1")] <- "male"
+data[[1]]$Sex[which(data[[1]]$Individual=="H2")] <- "female"
+data[[1]]$Sex[which(data[[1]]$Individual=="C4")] <- "female"
+data[[2]]$Sex[which(data[[2]]$Individual=="H5")] <- "female"
+data[[2]]$Sex[which(data[[2]]$Individual=="C5")] <- "female"
+data[[2]]$Sex[which(data[[2]]$Individual=="H3")] <- "male"
+data[[2]]$Sex[which(data[[2]]$Individual=="C2")] <- "female"
+
+#age of sample source cell line was generated from
+for (i in 1:length(data)) { data[[i]]$Age <- NA }
+data[[1]]$Age[which(data[[1]]$Individual=="H1")] <- 22
+data[[1]]$Age[which(data[[1]]$Individual=="C1")] <- 16
+data[[1]]$Age[which(data[[1]]$Individual=="H2")] <- 23
+data[[1]]$Age[which(data[[1]]$Individual=="C4")] <- 14
+data[[2]]$Age[which(data[[2]]$Individual=="H5")] <- 20
+data[[2]]$Age[which(data[[2]]$Individual=="C5")] <- 17
+data[[2]]$Age[which(data[[2]]$Individual=="H3")] <- 21
+data[[2]]$Age[which(data[[2]]$Individual=="C2")] <- 9
+
+#stage of differentiation of cells in collection
+for (i in 1:length(data)) { data[[i]]$Stage <- NA }
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.6=="CMO301")] <- "d00"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.6=="CMO302")] <- "d0"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.6=="CMO303")] <- "d7-m"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.6=="CMO304")] <- "d14-m"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.6=="CMO305")] <- "d7-c"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.6=="CMO306")] <- "d14-c"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.6=="CMO307")] <- "d00"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.6=="CMO308")] <- "d0"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.6=="CMO309")] <- "d7-m"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.6=="CMO310")] <- "d14-m"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.6=="CMO311")] <- "d7-c"
+data[[1]]$Stage[which(data[[1]]$ComboRef_0.6=="CMO312")] <- "d14-c"
+data[[2]]$Stage[which(data[[2]]$ComboRef_0.6=="CMO301")] <- "d0"
+data[[2]]$Stage[which(data[[2]]$ComboRef_0.6=="CMO302")] <- "d7-c"
+data[[2]]$Stage[which(data[[2]]$ComboRef_0.6=="CMO303")] <- "d14-c"
+data[[2]]$Stage[which(data[[2]]$ComboRef_0.6=="CMO304")] <- "d0"
+data[[2]]$Stage[which(data[[2]]$ComboRef_0.6=="CMO305")] <- "d7-c"
+data[[2]]$Stage[which(data[[2]]$ComboRef_0.6=="CMO306")] <- "d14-c"
+
+#chondrogenic stage of differentiation of cells in collection
+for (i in 1:length(data)) { data[[i]]$ChondroStage <- NA }
+data[[1]]$ChondroStage[which(data[[1]]$Stage=="d00")] <- "Day 00"
+data[[1]]$ChondroStage[which(data[[1]]$Stage=="d0")] <- "Day 0"
+data[[1]]$ChondroStage[which(data[[1]]$Stage=="d7-c")] <- "Day 7"
+data[[1]]$ChondroStage[which(data[[1]]$Stage=="d14-c")] <- "Day 14"
+data[[2]]$ChondroStage[which(data[[2]]$Stage=="d0")] <- "Day 0"
+data[[2]]$ChondroStage[which(data[[2]]$Stage=="d7-c")] <- "Day 7"
+data[[2]]$ChondroStage[which(data[[2]]$Stage=="d14-c")] <- "Day 14"
+
+#mesensphere stage of differentiation of cells in collection
+for (i in 1:length(data)) { data[[i]]$MesenStage <- NA }
+data[[1]]$MesenStage[which(data[[1]]$Stage=="d00")] <- "Day 00"
+data[[1]]$MesenStage[which(data[[1]]$Stage=="d0")] <- "Day 0"
+data[[1]]$MesenStage[which(data[[1]]$Stage=="d7-m")] <- "Day 7"
+data[[1]]$MesenStage[which(data[[1]]$Stage=="d14-m")] <- "Day 14"
+data[[2]]$MesenStage[which(data[[2]]$Stage=="d0")] <- "Day 0"
+data[[2]]$MesenStage[which(data[[2]]$Stage=="d7-m")] <- "Day 7"
+data[[2]]$MesenStage[which(data[[2]]$Stage=="d14-m")] <- "Day 14"
+
+#abbreviation of sample name in collection
+for (i in 1:length(data)) { data[[i]]$Sample <- NA }
+data[[1]]$Sample <- paste0(data[[1]]$Individual,"-",data[[1]]$Stage)
+data[[2]]$Sample <- paste0(data[[2]]$Individual,"-",data[[2]]$Stage)
+
+#samples <- c("C1-I","C1-I-r2","C2-I","C3-I","C4-I","C5-I","C6-I",
+#             "H1-I","H1-I-r2","H2-I","H3-I","H4-I","H5-I","H6-I",
+#             "C1-M","C1-M-r2","C2-M","C3-M","C4-M","C5-M","C6-M",
+#             "H1-M","H1-M-r2","H2-M","H3-M","H4-M","H5-M","H6-M",
+#             "C1-O","C1-O-r2","C2-O","C3-O","C4-O","C5-O","C6-O",
+#             "H1-O","H1-O-r2","H2-O","H3-O","H4-O","H5-O","H6-O")
+
+#several details on cell line and collection
+#for (i in 1:length(data)) { data[[i]]$DateCollection <- NA }
+#for (i in 1:length(data)) { data[[i]]$Number6W <- NA }
+#for (i in 1:length(data)) { data[[i]]$PrewashCount <- NA }
+#for (i in 1:length(data)) { data[[i]]$PrewashViability <- NA }
+#for (i in 1:length(data)) { data[[i]]$PostwashCount <- NA }
+#for (i in 1:length(data)) { data[[i]]$PostwashViability <- NA }
+#for (i in 1:length(data)) { data[[i]]$PostmixCount <- NA }
+#for (i in 1:length(data)) { data[[i]]$PostmixViability <- NA }
+#for (i in 1:length(data)) { data[[i]]$DatecDNA <- NA }
+#for (i in 1:length(data)) { data[[i]]$DateLibrary <- NA }
+#for (i in 1:length(data)) { data[[i]]$SequencingBatch <- NA }
+#for (i in 1:length(data)) { 
+#  for(j in samples) {
+#    if(j %in% batch$Sample_in_Pool) {
+#      data[[i]]$DateCollection[which(data[[i]]$Sample==j)] <- batch$Date_of_10X_Collection[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$Number6W[which(data[[i]]$Sample==j)] <- batch$Number_of_6wells_Used[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$PrewashCount[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Count_Prewash[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$PrewashViability[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Viability_Prewash[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$PostwashCount[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Count_Postwash[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$PostwashViability[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Viability_Postwash[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$PostmixCount[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Count_Postwash_Postmix[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$PostmixViability[which(data[[i]]$Sample==j)] <- batch$X10X_Cell_Viability_Postwash_Postmix[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$DatecDNA[which(data[[i]]$Sample==j)] <- batch$Date_of_10X_cDNA_Synthesis[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$DateLibrary[which(data[[i]]$Sample==j)] <- batch$Date_of_10X_Library_Prep[which(batch$Sample_in_Pool==j)]
+#      data[[i]]$SequencingBatch[which(data[[i]]$Sample==j)] <- batch$X10X_Sequencing_Pool[which(batch$Sample_in_Pool==j)]
+#    }
+#  }
+#}
+
+```
+
+```{r, eval=FALSE, echo=TRUE}
+
+#Save total data
+saveRDS(data, file="./data/06_data.rds")
+
+```
+
+..
+..
+..
+UPDATE FROM HERE
+..
+..
+..
+
+### Export processed count matrices for GEO
+
+Processed data for comparative osteogenesis paper
+
+```{r, eval=FALSE}
+
+#Export count matrix and metadata for remaining samples
+
+#Load data
+batch <- read.csv(file='./data/scrna-batch.csv', header=TRUE, sep=",")
+data <- readRDS("./data/cellranger-data-full/data.rds")
+
+#Rename cells and combine raw count data and metadata
+tbl.cnt <- data.frame(matrix(NA, nrow=19377, ncol=0))
+tbl.met <- data.frame(matrix(NA, nrow=0, ncol=33))
+i=4
+while (i <= length(data)) {
+  print(i)
+  data[[i]] <- RenameCells(data[[i]], add.cell.id=batch$Sample_Name_at_Core[i])
+  tbl.cnt <- cbind(tbl.cnt,as.data.frame(GetAssayData(object=data[[i]], slot="counts")))
+  tbl.met <- rbind(tbl.met,as.data.frame(data[[i]]@meta.data)[,-c(1:3)])
+  i=i+1
+}
+
+#Save processed data
+write.table(tbl.cnt, 
+            file="./data/cellranger-data-full/HOU_count.csv", 
+            sep=',',
+            row.names=T,
+            col.names=T,
+            quote=F)
+write.table(tbl.met, 
+            file="./data/cellranger-data-full/HOU_meta.csv", 
+            sep=',',
+            row.names=T,
+            col.names=T,
+            quote=F)
+
+```
+
+```{bash, eval=FALSE}
+#easiest to do this on the computing cluster
+cd /project2/gilad/ghousman
+
+#Make folder containing files to be uploaded to GEO
+mkdir geo_GHO_20210807
+cd geo_GHO_20210807
+mkdir data_raw
+mkdir data_proc
+cd data_proc
+cp /project2/gilad/ghousman/skeletal-human-chimp/human-chimp-skeletal-scRNA/data/cellranger-data-full/HOU_count.csv .
+cp /project2/gilad/ghousman/skeletal-human-chimp/human-chimp-skeletal-scRNA/data/cellranger-data-full/HOU_meta.csv .
+md5sum *
+#manually added file checksum to metadata file
+cd ..
+cd data_raw
+cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191112_K00242_0637_AHCLNGBBXY-YG-GH-10X-12S-HOU-lns1-2/HCLNGBBXY_78/*/*.fastq.gz .
+cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123/*/*.fastq.gz .
+#these files have the same names as some in the next folder [see notes below] so rename the files
+for file in *.fastq.gz; do mv "$file" "${file//_L001_/_L005_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//_L002_/_L006_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//_L003_/_L009_}"; done
+cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234/*/*.fastq.gz .
+cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78/*/*.fastq.gz .
+#these files have the same names as some in the next two folders [see notes below] so rename the files
+for file in *.fastq.gz; do mv "$file" "${file//HOU-17_S1_L007_/HOU-17_S1_L005_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-18_S2_L007_/HOU-18_S2_L005_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-19_S3_L007_/HOU-19_S3_L005_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-20_S4_L007_/HOU-20_S4_L005_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-21_S5_L007_/HOU-21_S5_L005_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-22_S6_L007_/HOU-22_S6_L005_}"; done
+cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7/*/*.fastq.gz .
+#these files have the same names as some in the next folder [see notes below] so rename the files
+for file in *.fastq.gz; do mv "$file" "${file//HOU-17_S1_L007_/HOU-17_S1_L006_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-18_S2_L007_/HOU-18_S2_L006_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-19_S3_L007_/HOU-19_S3_L006_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-20_S4_L007_/HOU-20_S4_L006_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-21_S5_L007_/HOU-21_S5_L006_}"; done
+for file in *.fastq.gz; do mv "$file" "${file//HOU-22_S6_L007_/HOU-22_S6_L006_}"; done
+cp -r /project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7/*/*.fastq.gz .
+rm *_I1_*.fastq.gz
+md5sum *
+#manually added file checksum to metadata file
+#manually transferred metadata file to geo_GHO_20210807 via FileZilla
+
+#Upload files to GEO
+cd /project2/gilad/ghousman
+sftp geoftp@sftp-private.ncbi.nlm.nih.gov
+cd uploads/ghousman_SbedAyUe
+mkdir geo_GHO_20210807
+put -R /project2/gilad/ghousman/geo_GHO_20210807
+
+#Remove files for GEO
+cd /project2/gilad/ghousman
+rm -r geo_GHO_20210807
+
+### FILE RENAMING NOTES
+### NEED TO RENAME FILES TO L005/L006/L009 ###
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123/*/*_L001_*.fastq.gz
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123/*/*_L002_*.fastq.gz
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191217_K00242_0648_BHFHY7BBXY-YG-GH-10X-12S-HOU-lns345/FastQ/HFHY7BBXY_123/*/*_L003_*.fastq.gz
+### vs.
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234/*/*_L001_*.fastq.gz
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234/*/*_L002_*.fastq.gz
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191220_K00242_0650_BHFTJ2BBXY-YG-GH-10X-12S-HOU-lns6789/FastQ/HFTJ2BBXY_1234/*/*_L003_*.fastq.gz
+### NEED TO RENAME FILES TO L005/L006 ###
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/191227_K00242_0655_BHG3MCBBXY-YG-GH-10X-HOU2-6s-lns12/Unaligned_YG-GH-10X-HOU2-6S/HG3MCBBXY_78/*/*_L007_*.fastq.gz
+### vs.
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/200103_K00242_0656_BHFYVWBBXY_YG-GH-10X-HOU2-6S-ln3/Unaligned_YG-GH-10X-HOU2-6S-ln3/HFYVWBBXY_7/*/*_L007_*.fastq.gz
+### vs.
+### /project2/gilad/ghousman/skeletal-human-chimp/scRNA/200124_K00242_0661_BHGGF3BBXY-YG-GH-HOU2-10X-6S-ln4/Unaligned_YG-GH-10X-HOU2-6S-ln4/HGGF3BBXY_7/*/*_L007_*.fastq.gz
+```

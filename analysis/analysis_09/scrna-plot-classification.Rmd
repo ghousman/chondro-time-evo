@@ -1,0 +1,1126 @@
+---
+title: "scrna-data-classification"
+author: "Genevieve Housman"
+date: "April 2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# scRNA-seq Analyses - Cell Classification Plots
+
+Make plots of cell classification findings and assess functional enrichments.
+Visualize gene expression correlations across cell classifications.
+Examine overlap of cells across classification schemes.
+
+https://cran.r-project.org/web/packages/cvms/vignettes/creating_a_confusion_matrix.html
+
+```{r}
+#Load libraries
+library(Seurat)
+library(cvms)
+library(broom)
+library(tibble)
+library(dplyr)
+library(stringi)
+library(stringr)
+library(ggplot2)
+library(GGally)
+library(colorspace)
+library(RColorBrewer)
+library(ggplot2)
+library(cowplot)
+library(edgeR)
+```
+
+Currently working with the following datasets
+
+* data integrated across individuals - chondro (conservative cell filter + intra-dataset variable genes + regress out UMI/mito
+* data integrated across individuals - chondro (conservative cell filter + non-zero genes + regress out UMI/mito)
+
+```{r}
+
+#define parameters for integrated data
+genes <- "Var"  #features that are repeatedly variable across datasets for integration
+#genes <- "No0"  #all genes that have at least 1 UMI count across samples
+#genes <- "19k"  #all 19397 genes
+dimred <- "cca"
+#dimred <- "pca"
+#dimred <- "ref"
+kweigh <- 50
+#kweigh <- 100
+regout <- "reg"
+#regout <- "non"
+
+```
+
+```{r}
+
+#define colors for plots
+
+color_d00    <- rgb(186, 85,211, maxColorValue=255)
+color_d0     <- rgb(218, 75,180, maxColorValue=255)
+color_d7c    <- rgb(253, 93, 93, maxColorValue=255)
+color_d14c   <- rgb(254,192,  0, maxColorValue=255)
+
+color_wu_d7  <- rgb(211,211,211, maxColorValue=255)
+color_wu_d14 <- rgb(132,136,132, maxColorValue=255)
+color_wu_d28 <- rgb(113,121,126, maxColorValue=255)
+color_wu_d42 <- rgb( 54, 69, 79, maxColorValue=255)
+
+color_gah_ips <- "pink"
+color_gah_msc <- "mediumorchid"
+color_gah_ost <- "dodgerblue"
+color_gah_cho <- "goldenrod"
+#color_gah_ips  <- rgb(211,211,211, maxColorValue=255)
+#color_gah_msc  <- rgb(132,136,132, maxColorValue=255)
+#color_gah_ost  <- rgb(113,121,126, maxColorValue=255)
+#color_gah_cho  <- rgb( 54, 69, 79, maxColorValue=255)
+
+m.c1    <- rgb(186, 85,211, maxColorValue=255)
+m.c2    <- rgb(218, 75,180, maxColorValue=255)
+m.c3    <- rgb(253, 93, 93, maxColorValue=255)
+c.c1    <- rgb(254,138, 46, maxColorValue=255)
+c.c2    <- rgb(254,192,  0, maxColorValue=255)
+
+cc.c1   <- rgb(253, 93, 93, maxColorValue=255)
+cc.c2   <- rgb(254,126, 62, maxColorValue=255)
+cc.c3   <- rgb(254,159, 31, maxColorValue=255)
+cc.c4   <- rgb(254,192,  0, maxColorValue=255)
+
+col_organoid <- c("Day 00"=color_d00,
+                  "Day 0" =color_d0,
+                  "Day 7" =color_d7c,
+                  "Day 14"=color_d14c)
+
+col_eb <- c("KB: iPSC-EB"="gray")
+
+col_wu <- c("Wu: Day 7" =color_wu_d7,
+            "Wu: Day 14"=color_wu_d14,
+            "Wu: Day 28"=color_wu_d28,
+            "Wu: Day 42"=color_wu_d42)
+
+col_gah <- c("GH: iPSC"   =color_gah_ips,
+             "GH: Day 00" =color_gah_msc,
+             "GH: Osteo"  =color_gah_ost,
+             "GH: Day 21*"=color_gah_cho)
+
+col_cluster <- c("MSC.c1"=m.c1,
+                 "MSC.c2"=m.c2,
+                 "MSC.c3"=m.c3,
+                 "Chondrogenic.c1"=c.c1,
+                 "Chondrogenic.c2"=c.c2)
+
+col_cluster2 <- c("Chondrogenic.c1"=cc.c1,
+                  "Chondrogenic.c2"=cc.c2,
+                  "Chondrogenic.c3"=cc.c3,
+                  "Chondrogenic.c4"=cc.c4,
+                  "not chondrogenic"="grey")
+
+```
+
+```{r}
+#Load libraries for GO enrichment analysis
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(viridis)
+#Define functions to assess GO functional enrichment
+goEnrich <- function(totGenes, deGenes, ontology) {
+  ref.df <- bitr(totGenes, fromType="SYMBOL", toType=c("ENSEMBL","ENTREZID"), OrgDb=org.Hs.eg.db)
+  gene.df <- bitr(deGenes, fromType="SYMBOL", toType=c("ENSEMBL","ENTREZID"), OrgDb=org.Hs.eg.db)
+  ego <- enrichGO(gene          = gene.df$ENSEMBL,
+                  OrgDb         = org.Hs.eg.db,
+                  universe      = ref.df$ENSEMBL,
+                  keyType       = 'ENSEMBL',
+                  ont           = ontology,
+                  pAdjustMethod = "BH",
+                  pvalueCutoff  = 0.01,
+                  qvalueCutoff  = 0.05,
+                  readable      = TRUE)
+  return(ego)
+}
+#Define function to plot GO functional enrichment results
+goEnPlot <- function(goTot, title) {
+  print(ggplot(goTot, aes(x=GeneRatio, y=Description, color=p.adjust, size=Count), split='ONTOLOGY') +
+          geom_point() +
+          theme(axis.text.x=element_text(angle=-40, hjust=0)) +
+          facet_grid(ONTOLOGY~., scale="free") +
+          scale_size_area(max_size=6) +
+          scale_color_viridis(option="C") +
+          theme_bw() +
+          labs(title=title, x="Gene Ratio", y=""))
+}
+#Get total genes
+counts <- as.matrix(data@assays$RNA@counts) #do not use integrated data
+counts <- counts[rowSums(counts>0)>0,]      #remove genes with 0 counts across cells
+geneTot <- rownames(counts)
+#Get mitochondrial and ribosomal genes
+genes <- rownames(data@assays$RNA@counts)
+genes.mito <- c("MT-ATP6","MT-ATP8","MT-CO1","MT-CO2","MT-CO3","MT-CYB","MT-ND1","MT-ND2","MT-ND3","MT-ND4","MT-ND4L","MT-ND5")
+genes.ribo <- grep('^RP',genes,value=T)
+genes.no.mito.ribo <- genes[which(!(genes %in% c(genes.mito,genes.ribo)))]
+rm(genes,genes.mito,genes.ribo)
+```
+
+## Stage of differentiation at collection
+
+```{r}
+
+#Load data
+scrna <- paste0("./data/integrated/data.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".assign.rds")
+data <- readRDS(scrna)
+
+data@meta.data$ChondroStage <- factor(data@meta.data$ChondroStage,
+                                      levels=c("Day 00","Day 0","Day 7","Day 14"))
+
+```
+
+### Plots
+Make plots of cell classification findings.
+
+```{r}
+#umap
+DimPlot(data,
+        group.by="ChondroStage",
+        reduction="umap",
+        cols=col_organoid) +
+  labs(x="UMAP1",y="UMAP2")
+DimPlot(data,
+        group.by="ChondroStage",
+        split.by="Species",
+        reduction="umap",
+        cols=col_organoid) +
+  labs(x="UMAP1",y="UMAP2")
+#cell counts
+data
+ggplot(data@meta.data, aes(x=ChondroStage, fill=ChondroStage)) +
+  geom_bar(position="dodge") +
+  labs(y="Number of Cells", x="") +
+  scale_fill_manual(name="", values=col_organoid) +
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+ggplot(data@meta.data, aes(x=ChondroStage, fill=ChondroStage)) +
+  geom_bar(position="dodge") +
+  labs(y="Number of Cells", x="") +
+  scale_fill_manual(name="", values=col_organoid) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+#umi counts
+mean(data@meta.data$nCount_RNA)
+median(data@meta.data$nCount_RNA)
+ggplot(data@meta.data, aes(x=ChondroStage, y=nCount_RNA, fill=ChondroStage)) +
+  geom_violin(width=0.8) +
+  labs(y="UMIs per Cell", x="") +
+  scale_fill_manual(name="", values=col_organoid) +
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+ggplot(data@meta.data, aes(x=ChondroStage, y=nCount_RNA, fill=ChondroStage)) +
+  geom_violin(width=0.8) +
+  labs(y="UMIs per Cell", x="") +
+  scale_fill_manual(name="", values=col_organoid) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+#gene counts
+mean(data@meta.data$nFeature_RNA)
+median(data@meta.data$nFeature_RNA)
+ggplot(data@meta.data, aes(x=ChondroStage, y=nFeature_RNA, fill=ChondroStage)) +
+  geom_violin(width=0.8) +
+  labs(y="Genes per Cell", x="") +
+  scale_fill_manual(name="", values=col_organoid) +
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+ggplot(data@meta.data, aes(x=ChondroStage, y=nFeature_RNA, fill=ChondroStage)) +
+  geom_violin(width=0.8) +
+  labs(y="Genes per Cell", x="") +
+  scale_fill_manual(name="", values=col_organoid) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+##collagen ii is filtered out???
+#which(sapply(data@assays$RNA@counts@Dimnames[[1]], stri_count_regex, pattern="COL")==1)
+#which(sapply(data@assays$integrated@data@Dimnames[[1]], stri_count_regex, pattern="COL")==1)
+#dotplot
+DotPlot(data,
+        features=c("ACAN","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="ChondroStage", dot.scale=20,
+        cols=c("grey99","black"),
+        col.max=5)
+DotPlot(subset(data,subset=Species=="Human"),
+        #features=c("ACAN","SOX6","SOX5","COL11A1"),
+        features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="ChondroStage", dot.scale=20,
+        cols=c("grey99","black"),
+        col.max=5)
+DotPlot(subset(data,subset=Species=="Chimp"),
+        #features=c("ACAN","SOX6","SOX5","COL11A1"),
+        features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="ChondroStage", dot.scale=20,
+        cols=c("grey99","black"),
+        col.max=5)
+#violin plot
+VlnPlot(data,
+        #assay="RNA",
+        features=c("ACAN","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="ChondroStage",
+        cols=col_organoid,
+        pt.size=0)
+```
+
+```{r}
+
+#marker genes
+VlnPlot(data, features=c("POU5F1","CD44","COL1A1"), group.by="Stage", cols=c("pink","mediumorchid","dodgerblue"), pt.size=0)
+DotPlot(subset(data,subset=Species=="Human"), features=c("COL1A1","CD44","POU5F1"), group.by="Stage", dot.scale=20, cols=c("grey99","black"), col.max=5)
+DotPlot(subset(data,subset=Species=="Chimp"), features=c("COL1A1","CD44","POU5F1"), group.by="Stage", dot.scale=20, cols=c("grey99","black"), col.max=5)
+#DotPlot(subset(data,subset=Species=="Human"), features=c("COL1A1","CD44","POU5F1"), group.by="Stage", dot.scale=20, cols=c("grey99","pink"), col.max=5)
+#DotPlot(subset(data,subset=Species=="Human"), features=c("COL1A1","CD44","POU5F1"), group.by="Stage", dot.scale=20, cols=c("grey99","mediumorchid"), col.max=5)
+#DotPlot(subset(data,subset=Species=="Human"), features=c("COL1A1","CD44","POU5F1"), group.by="Stage", dot.scale=20, cols=c("grey99","dodgerblue"), col.max=5)
+#DotPlot(subset(data,subset=Species=="Chimp"), features=c("COL1A1","CD44","POU5F1"), group.by="Stage", dot.scale=20, cols=c("grey99","pink"), col.max=5)
+#DotPlot(subset(data,subset=Species=="Chimp"), features=c("COL1A1","CD44","POU5F1"), group.by="Stage", dot.scale=20, cols=c("grey99","mediumorchid"), col.max=5)
+#DotPlot(subset(data,subset=Species=="Chimp"), features=c("COL1A1","CD44","POU5F1"), group.by="Stage", dot.scale=20, cols=c("grey99","dodgerblue"), col.max=5)
+VlnPlot(data,
+        features=c("RUNX2","BGLAP","CAPG","DMP1","PHEX","MEPE","SOST","HYOU1"),
+        group.by="Stage",
+        cols=c("pink","mediumorchid","dodgerblue"),
+        pt.size=0)
+DotPlot(subset(data,subset=Species=="Human"),
+        features=c("RUNX2","BGLAP","CAPG","DMP1","PHEX","MEPE","SOST","HYOU1"),
+        group.by="Stage",
+        dot.scale=20,
+        cols=c("grey99","black"),
+        col.max=5)
+DotPlot(subset(data,subset=Species=="Chimp"),
+        features=c("RUNX2","BGLAP","CAPG","DMP1","PHEX","MEPE","SOST","HYOU1"),
+        group.by="Stage",
+        dot.scale=20,
+        cols=c("grey99","black"),
+        col.max=5)
+```
+
+### Marker Genes
+
+```{r}
+
+#Find markers that distinguish day 7 and day 14 chondrogenic cells from all other cells, report only the positive ones
+markers <- FindMarkers(data,
+                       slot="data",
+                       group.by="ChondroStage",
+                       ident.1=c("Day 7","Day 14"),
+                       ident.2=c("Day 00","Day 0"),
+                       only.pos=TRUE,
+                       min.pct=0.1,
+                       logfc.threshold=0.25,
+                       min.cells.feature=3,
+                       min.cells.group=3,
+                       pseudocount.use=1,
+                       test.use="wilcox",
+                       random.seed = 1)
+saveRDS(markers, file=paste0("./output/markers/markers_d7d14_data.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers <- readRDS(paste0("./output/markers/markers_d7d14_data.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers %>% top_n(n=10, wt=avg_log2FC)
+#CILP, FST, GREB1L, FBLN5, FOXO1, FKBP5, APCDD1, FBN1, ZBTB16, ACSL1
+
+#Find markers that distinguish day 7 chondrogenic cells from all other non-chondrogenic cells, report only the positive ones
+markers <- FindMarkers(data,
+                       slot="data",
+                       group.by="ChondroStage",
+                       ident.1=c("Day 7"),
+                       ident.2=c("Day 00","Day 0"),
+                       only.pos=TRUE,
+                       min.pct=0.1,
+                       logfc.threshold=0.25,
+                       min.cells.feature=3,
+                       min.cells.group=3,
+                       pseudocount.use=1,
+                       test.use="wilcox",
+                       random.seed = 1)
+saveRDS(markers, file=paste0("./output/markers/markers_d7_data.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers <- readRDS(paste0("./output/markers/markers_d7_data.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers %>% top_n(n=10, wt=avg_log2FC)
+#CILP, FST, GREB1L, FBLN5, FOXO1, FKBP5, FBN1, ZBTB16, ACSL1, PIK3R1
+
+#Find markers that distinguish day 14 chondrogenic cells from all other non-chondrogenic cells, report only the positive ones
+markers <- FindMarkers(data,
+                       slot="data",
+                       group.by="ChondroStage",
+                       ident.1=c("Day 14"),
+                       ident.2=c("Day 00","Day 0"),
+                       only.pos=TRUE,
+                       min.pct=0.1,
+                       logfc.threshold=0.25,
+                       min.cells.feature=3,
+                       min.cells.group=3,
+                       pseudocount.use=1,
+                       test.use="wilcox",
+                       random.seed = 1)
+saveRDS(markers, file=paste0("./output/markers/markers_d14_data.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers <- readRDS(paste0("./output/markers/markers_d14_data.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers %>% top_n(n=10, wt=avg_log2FC)
+#CILP, FST, GREB1L, FBLN5, MAMDC2, FOXO1, FKBP5, APCDD1, FBN1, ZBTB16
+
+```
+
+### Enrichment
+Assess GO functional enrichment of genes defining each stage of differentiation.
+
+```{r, eval=FALSE}
+#Find markers for each stage of differentiation
+markers.i <- FindMarkers(data, ident.1="Time 0", group.by="Stage", only.pos=TRUE, min.pct=0.25, logfc.threshold=0.25) #ipsc
+markers.m <- FindMarkers(data, ident.1="Time 1", group.by="Stage", only.pos=TRUE, min.pct=0.25, logfc.threshold=0.25) #msc
+markers.o <- FindMarkers(data, ident.1="Time 2", group.by="Stage", only.pos=TRUE, min.pct=0.25, logfc.threshold=0.25) #osteo
+saveRDS(markers.i, file="./output/markersStage-I.data.filterC.log.indv-cell.intNo0.reg-tot.rds")
+saveRDS(markers.m, file="./output/markersStage-M.data.filterC.log.indv-cell.intNo0.reg-tot.rds")
+saveRDS(markers.o, file="./output/markersStage-O.data.filterC.log.indv-cell.intNo0.reg-tot.rds")
+```
+
+```{r}
+#Stage-iPSC
+genes <- readRDS("./output/markersStage-I.data.filterC.log.indv-cell.intNo0.reg-tot.rds")
+#Find top 100 markers, report only the positive ones
+geneSub <- genes %>% top_n(n=100, wt=avg_logFC)
+#Test for functional enrichment
+goTot <- goEnrich(totGenes=geneTot, deGenes=rownames(geneSub), ontology="ALL")
+goTot@result$Description <- str_wrap(goTot@result$Description, width=30)
+goEnPlot(goTot,title="Time 0 Genes")
+#Stage-MSC
+genes <- readRDS("./output/markersStage-M.data.filterC.log.indv-cell.intNo0.reg-tot.rds")
+#Find top 100 markers, report only the positive ones
+geneSub <- genes %>% top_n(n=100, wt=avg_logFC)
+#Test for functional enrichment
+goTot <- goEnrich(totGenes=geneTot, deGenes=rownames(geneSub), ontology="ALL")
+goTot@result$Description <- str_wrap(goTot@result$Description, width=30)
+goEnPlot(goTot,title="Time 1 Genes")
+#Stage-Osteogenic
+genes <- readRDS("./output/markersStage-O.data.filterC.log.indv-cell.intNo0.reg-tot.rds")
+#Find top 100 markers, report only the positive ones
+geneSub <- genes %>% top_n(n=100, wt=avg_logFC)
+#Test for functional enrichment
+goTot <- goEnrich(totGenes=geneTot, deGenes=rownames(geneSub), ontology="ALL")
+goTot@result$Description <- str_wrap(goTot@result$Description, width=30)
+goEnPlot(goTot,title="Time 2 Genes")
+rm(genes,geneSub,goTot)
+```
+
+## Integration with KB's iPSC-derived EB data
+
+```{r}
+
+#Load data
+scrna <- paste0("./data/integrated/combined-data-eb.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds")
+#scrna <- paste0("./data/integrated/combined-data-eb-human.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds")
+data <- readRDS(scrna)
+
+data@meta.data$ChondroStage <- factor(data@meta.data$ChondroStage,
+                                      levels=c("Day 00","Day 0","Day 7","Day 14",
+                                               "KB: iPSC-EB"))
+
+```
+
+### Plots
+Make plots of cell classification findings.
+
+```{r}
+#umap-chondro
+DimPlot(data,
+        group.by="ChondroStage",
+        reduction="umap",
+        cols=c(col_organoid,col_eb)) +
+  labs(x="UMAP1",y="UMAP2")
+DimPlot(data,
+        group.by="ChondroStage",
+        split.by="Species",
+        reduction="umap",
+        cols=c(col_organoid,col_eb)) +
+  labs(x="UMAP1",y="UMAP2")
+#umap-eb
+#labels_subset <- c("Undifferentiated 1", "Early Mesoderm 1", "Early Ectoderm 1", "Early Endoderm 1",
+#                   "Endo cardial cells", "Epicardial fat cells", "Cardiomyocytes", "Mesothelial cells",
+#                   "Skeletal muscle cells", "Smooth muscle cells", "Stromal cells", "Hepatoblasts",
+#                   "Astrocytes", "Excitatory neurons", "Neuroendocrine cells", "Schwann cells")
+labels_subset <- c("Undifferentiated 1", "Undifferentiated 2",
+                   "Early Mesoderm 1", "Early Mesoderm 2",
+                   "Early Ectoderm 1", "Early Ectoderm 2", "Early Ectoderm 3", "Early Ectoderm 4",
+                   "Early Endoderm 1", "Early Endoderm 2",
+                   "Endocardial cells", "Epicardial fat cells", "Cardiomyocytes", "Vascular endothelial cells",
+                   "Mesothelial cells", "Skeletal muscle cells", "Smooth muscle cells", "Stromal cells",
+                   "Hepatoblasts", "Thymocytes", "Intestinal epithelial cells",
+                   "Astrocytes", "Excitatory neurons", "Neuroendocrine cells", "Schwann cells", "ENS neurons",
+                   "Microglia", "Oligodendrocytes","Purkinje neurons", "Visceral neurons", "Myeloid cells",
+                   "Limbic system neurons", "Lymphoid cells", "Ganglion cells", "Erythroblasts",
+                   "Hematopoietic stem cells", "Adrenocortical cells", "Goblet cells", "Inhibitory interneurons")
+data@meta.data$labels_subset <- NA
+data@meta.data$labels_subset[which(data@meta.data$labels %in% labels_subset)] <- data@meta.data$labels[which(data@meta.data$labels %in% labels_subset)]
+DimPlot(data,
+        group.by="labels",
+        label=TRUE,
+        label.size=2,
+        repel=TRUE,
+        reduction="umap") +
+  labs(x="UMAP1",y="UMAP2") +
+  NoLegend()
+DimPlot(data,
+        group.by="labels_subset",
+        label=TRUE,
+        label.size=3,
+        repel=TRUE,
+        reduction="umap") +
+  labs(x="UMAP1",y="UMAP2") +
+  NoLegend()
+#cell counts
+ggplot(data@meta.data, aes(x=ChondroStage, fill=ChondroStage)) +
+  geom_bar(position="dodge") +
+  labs(y="Number of Cells", x="") +
+  scale_fill_manual(name="", values=c(col_organoid,col_eb)) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+#umi counts
+ggplot(data@meta.data, aes(x=ChondroStage, y=nCount_RNA, fill=ChondroStage)) +
+  geom_violin(width=0.8) +
+  labs(y="UMIs per Cell", x="") +
+  scale_fill_manual(name="", values=c(col_organoid,col_eb)) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+#gene counts
+ggplot(data@meta.data, aes(x=ChondroStage, y=nFeature_RNA, fill=ChondroStage)) +
+  geom_violin(width=0.8) +
+  labs(y="Genes per Cell", x="") +
+  scale_fill_manual(name="", values=c(col_organoid,col_eb)) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+#dotplot
+DotPlot(data,
+        #features=c("ACAN","SOX6","SOX5","COL11A1"),
+        features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="ChondroStage", dot.scale=20,
+        cols=c("grey99","black"),
+        col.max=5)
+#violin plot
+VlnPlot(data,
+        assay="RNA",
+        #features=c("ACAN","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="ChondroStage",
+        cols=c(col_organoid,col_eb),
+        pt.size=0)
+
+```
+
+### Marker Genes
+
+```{r}
+
+#Find markers that distinguish day 7 and day 14 chondrogenic cells from all other cells, report only the positive ones
+markers <- FindMarkers(data,
+                       slot="data",
+                       group.by="ChondroStage",
+                       ident.1=c("Day 7","Day 14"),
+                       ident.2=c("Day 00","Day 0","KB: iPSC-EB"),
+                       only.pos=TRUE,
+                       min.pct=0.1,
+                       logfc.threshold=0.25,
+                       min.cells.feature=3,
+                       min.cells.group=3,
+                       pseudocount.use=1,
+                       test.use="wilcox",
+                       random.seed = 1)
+saveRDS(markers, file=paste0("./output/markers/markers_d7d14_combined-data-eb.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers <- readRDS(paste0("./output/markers/markers_d7d14_combined-data-eb.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers %>% top_n(n=10, wt=avg_log2FC)
+#IGF2, DCN, COL1A2, IGFBP3, MFAP4, LUM, POSTN, COL1A1, COL3A1, PCOLCE
+
+#Find markers that distinguish day 7 chondrogenic cells from all other non-chondrogenic cells, report only the positive ones
+markers <- FindMarkers(data,
+                       slot="data",
+                       group.by="ChondroStage",
+                       ident.1=c("Day 7"),
+                       ident.2=c("Day 00","Day 0","KB: iPSC-EB"),
+                       only.pos=TRUE,
+                       min.pct=0.1,
+                       logfc.threshold=0.25,
+                       min.cells.feature=3,
+                       min.cells.group=3,
+                       pseudocount.use=1,
+                       test.use="wilcox",
+                       random.seed = 1)
+saveRDS(markers, file=paste0("./output/markers/markers_d7_combined-data-eb.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers <- readRDS(paste0("./output/markers/markers_d7_combined-data-eb.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers %>% top_n(n=10, wt=avg_log2FC)
+#IGF2, DCN, COL1A2, LUM, POSTN, COL1A1, COL3A1, PCOLCE, MFAP4, MGP
+
+#Find markers that distinguish day 14 chondrogenic cells from all other non-chondrogenic cells, report only the positive ones
+markers <- FindMarkers(data,
+                       slot="data",
+                       group.by="ChondroStage",
+                       ident.1=c("Day 14"),
+                       ident.2=c("Day 00","Day 0","KB: iPSC-EB"),
+                       only.pos=TRUE,
+                       min.pct=0.1,
+                       logfc.threshold=0.25,
+                       min.cells.feature=3,
+                       min.cells.group=3,
+                       pseudocount.use=1,
+                       test.use="wilcox",
+                       random.seed = 1)
+saveRDS(markers, file=paste0("./output/markers/markers_d14_combined-data-eb.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers <- readRDS(paste0("./output/markers/markers_d14_combined-data-eb.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers %>% top_n(n=10, wt=avg_log2FC)
+#IGF2, DCN, COL1A2, IGFBP3, MFAP4, LUM, POSTN, COL1A1, COL3A1, PCOLCE
+
+```
+
+
+## Integration with Wu et al. data
+
+```{r}
+
+#Load data
+scrna <- paste0("./data/integrated/combined-data-wu.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds")
+#scrna <- paste0("./data/integrated/combined-data-wu-human.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds")
+data <- readRDS(scrna)
+
+data@meta.data$ChondroStage <- factor(data@meta.data$ChondroStage,
+                                      levels=c("Day 00","Day 0","Day 7","Day 14",
+                                               "Wu: Day 7","Wu: Day 14","Wu: Day 28","Wu: Day 42"))
+
+```
+
+### Plots
+Make plots of cell classification findings.
+
+```{r}
+#umap
+DimPlot(data,
+        group.by="ChondroStage",
+        reduction="umap",
+        cols=c(col_organoid,col_wu)) +
+  labs(x="UMAP1",y="UMAP2")
+DimPlot(data,
+        group.by="ChondroStage",
+        split.by="Species",
+        reduction="umap",
+        cols=c(col_organoid,col_wu)) +
+  labs(x="UMAP1",y="UMAP2")
+#cell counts
+ggplot(data@meta.data, aes(x=ChondroStage, fill=ChondroStage)) +
+  geom_bar(position="dodge") +
+  labs(y="Number of Cells", x="") +
+  scale_fill_manual(name="", values=c(col_organoid,col_wu)) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+#umi counts
+ggplot(data@meta.data, aes(x=ChondroStage, y=nCount_RNA, fill=ChondroStage)) +
+  geom_violin(width=0.8) +
+  labs(y="UMIs per Cell", x="") +
+  scale_fill_manual(name="", values=c(col_organoid,col_wu)) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+#gene counts
+ggplot(data@meta.data, aes(x=ChondroStage, y=nFeature_RNA, fill=ChondroStage)) +
+  geom_violin(width=0.8) +
+  labs(y="Genes per Cell", x="") +
+  scale_fill_manual(name="", values=c(col_organoid,col_wu)) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+#dotplot
+DotPlot(data,
+        #features=c("ACAN","SOX6","SOX5","COL11A1"),
+        features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="ChondroStage", dot.scale=20,
+        cols=c("grey99","black"),
+        col.max=5)
+#violin plot
+VlnPlot(data,
+        assay="RNA",
+        #features=c("ACAN","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="ChondroStage",
+        cols=c(col_organoid,col_wu),
+        pt.size=0)
+
+```
+
+### Marker Genes
+
+```{r}
+
+#Find markers that distinguish day 7 and day 14 chondrogenic cells from Wu et al. chondrogenic cells, report only the positive ones
+markers <- FindMarkers(data,
+                       slot="data",
+                       group.by="ChondroStage",
+                       ident.1=c("Day 7","Day 14"),
+                       ident.2=c("Wu: Day 7","Wu: Day 14","Wu: Day 28","Wu: Day 42"),
+                       only.pos=TRUE,
+                       min.pct=0.1,
+                       logfc.threshold=0.25,
+                       min.cells.feature=3,
+                       min.cells.group=3,
+                       pseudocount.use=1,
+                       test.use="wilcox",
+                       random.seed = 1)
+saveRDS(markers, file=paste0("./output/markers/markers_d7d14_combined-data-wu.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers <- readRDS(paste0("./output/markers/markers_d7d14_combined-data-wu.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers %>% top_n(n=10, wt=avg_log2FC)
+#ELN, COL1A1, NDUFA4L2, ACTA2, TAGLN, TPM1, COL8A1, BNIP3, LDHA, S100A4
+
+#Find markers that distinguish day 7 chondrogenic cells from Wu et al. chondrogenic cells, report only the positive ones
+markers <- FindMarkers(data,
+                       slot="data",
+                       group.by="ChondroStage",
+                       ident.1=c("Day 7"),
+                       ident.2=c("Wu: Day 7","Wu: Day 14","Wu: Day 28","Wu: Day 42"),
+                       only.pos=TRUE,
+                       min.pct=0.1,
+                       logfc.threshold=0.25,
+                       min.cells.feature=3,
+                       min.cells.group=3,
+                       pseudocount.use=1,
+                       test.use="wilcox",
+                       random.seed = 1)
+saveRDS(markers, file=paste0("./output/markers/markers_d7_combined-data-wu.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers <- readRDS(paste0("./output/markers/markers_d7_combined-data-wu.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers %>% top_n(n=10, wt=avg_log2FC)
+#COL1A1, NDUFA4L2, ELN, ACTA2, TAGLN, COL8A1, TPM1, BNIP3, LDHA, S100A4
+
+#Find markers that distinguish day 14 chondrogenic cells from Wu et al. chondrogenic cells, report only the positive ones
+markers <- FindMarkers(data,
+                       slot="data",
+                       group.by="ChondroStage",
+                       ident.1=c("Day 14"),
+                       ident.2=c("Wu: Day 7","Wu: Day 14","Wu: Day 28","Wu: Day 42"),
+                       only.pos=TRUE,
+                       min.pct=0.1,
+                       logfc.threshold=0.25,
+                       min.cells.feature=3,
+                       min.cells.group=3,
+                       pseudocount.use=1,
+                       test.use="wilcox",
+                       random.seed = 1)
+saveRDS(markers, file=paste0("./output/markers/markers_d14_combined-data-wu.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers <- readRDS(paste0("./output/markers/markers_d14_combined-data-wu.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers %>% top_n(n=10, wt=avg_log2FC)
+#COL1A1, NDUFA4L2, ELN, ACTA2, TPM1, TAGLN, COL8A1, BNIP3, LDHA, S100A4
+
+```
+
+
+## Integration with GAH data
+
+```{r}
+
+#Load data
+#scrna <- paste0("./data/integrated/combined-data-gah.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds")
+scrna <- paste0("./data/integrated/combined-data-gah-chondro.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds")
+data <- readRDS(scrna)
+
+data@meta.data$ChondroStage <- factor(data@meta.data$ChondroStage,
+                                      levels=c("Day 00","Day 0","Day 7","Day 14",
+                                               "GH: iPSC","GH: Day 00","GH: Osteo","GH: Day 21*"))
+
+```
+
+### Plots
+Make plots of cell classification findings.
+
+```{r}
+#umap
+DimPlot(data,
+        group.by="ChondroStage",
+        reduction="umap",
+        cols=c(col_organoid,col_gah)) +
+  labs(x="UMAP1",y="UMAP2")
+DimPlot(data,
+        group.by="ChondroStage",
+        split.by="Species",
+        reduction="umap",
+        cols=c(col_organoid,col_gah)) +
+  labs(x="UMAP1",y="UMAP2")
+DimPlot(data,
+        group.by="ChondroStage",
+        split.by="ChondroStage",
+        reduction="umap",
+        cols=c(col_organoid,col_gah)) +
+  labs(x="UMAP1",y="UMAP2")
+#cell counts
+ggplot(data@meta.data, aes(x=ChondroStage, fill=ChondroStage)) +
+  geom_bar(position="dodge") +
+  labs(y="Number of Cells", x="") +
+  scale_fill_manual(name="", values=c(col_organoid,col_gah)) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+#umi counts
+ggplot(data@meta.data, aes(x=ChondroStage, y=nCount_RNA, fill=ChondroStage)) +
+  geom_violin(width=0.8) +
+  labs(y="UMIs per Cell", x="") +
+  scale_fill_manual(name="", values=c(col_organoid,col_gah)) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+#gene counts
+ggplot(data@meta.data, aes(x=ChondroStage, y=nFeature_RNA, fill=ChondroStage)) +
+  geom_violin(width=0.8) +
+  labs(y="Genes per Cell", x="") +
+  scale_fill_manual(name="", values=c(col_organoid,col_gah)) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+#dotplot
+DotPlot(data,
+        #features=c("ACAN","SOX6","SOX5","COL11A1"),
+        features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="ChondroStage", dot.scale=20,
+        cols=c("grey99","black"),
+        col.max=5)
+#violin plot
+VlnPlot(data,
+        assay="RNA",
+        #features=c("ACAN","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="ChondroStage",
+        cols=c(col_organoid,col_gah),
+        pt.size=0)
+```
+
+### Marker Genes
+
+```{r}
+
+#Find markers that distinguish day 7 and day 14 chondrogenic cells from GH: Day 21* monolayer chondrogenic cells, report only the positive ones
+markers <- FindMarkers(data,
+                       slot="data",
+                       group.by="ChondroStage",
+                       ident.1=c("Day 7","Day 14"),
+                       ident.2=c("GH: Day 21*"),
+                       only.pos=TRUE,
+                       min.pct=0.1,
+                       logfc.threshold=0.25,
+                       min.cells.feature=3,
+                       min.cells.group=3,
+                       pseudocount.use=1,
+                       test.use="wilcox",
+                       random.seed = 1)
+saveRDS(markers, file=paste0("./output/markers/markers_d7d14_combined-data-gah-chondro.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers <- readRDS(paste0("./output/markers/markers_d7d14_combined-data-gah-chondro.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers %>% top_n(n=10, wt=avg_log2FC)
+#ACTA2, ACTC1, CCN2, CALD1, TPM2, ACTB, TPM1, KRT17, GAS6, S100A6
+
+#Find markers that distinguish day 7 chondrogenic cells from GH: Day 21* monolayer chondrogenic cells, report only the positive ones
+markers <- FindMarkers(data,
+                       slot="data",
+                       group.by="ChondroStage",
+                       ident.1=c("Day 7"),
+                       ident.2=c("GH: Day 21*"),
+                       only.pos=TRUE,
+                       min.pct=0.1,
+                       logfc.threshold=0.25,
+                       min.cells.feature=3,
+                       min.cells.group=3,
+                       pseudocount.use=1,
+                       test.use="wilcox",
+                       random.seed = 1)
+saveRDS(markers, file=paste0("./output/markers/markers_d7_combined-data-gah-chondro.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers <- readRDS(paste0("./output/markers/markers_d7_combined-data-gah-chondro.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers %>% top_n(n=10, wt=avg_log2FC)
+#ACTA2, ACTC1, CCN2, CALD1, TPM2, ACTB, TPM1, KRT17, GAS6, S100A6
+
+#Find markers that distinguish day 14 chondrogenic cells from GH: Day 21* monolayer chondrogenic cells, report only the positive ones
+markers <- FindMarkers(data,
+                       slot="data",
+                       group.by="ChondroStage",
+                       ident.1=c("Day 14"),
+                       ident.2=c("GH: Day 21*"),
+                       only.pos=TRUE,
+                       min.pct=0.1,
+                       logfc.threshold=0.25,
+                       min.cells.feature=3,
+                       min.cells.group=3,
+                       pseudocount.use=1,
+                       test.use="wilcox",
+                       random.seed = 1)
+saveRDS(markers, file=paste0("./output/markers/markers_d14_combined-data-gah-chondro.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers <- readRDS(paste0("./output/markers/markers_d14_combined-data-gah-chondro.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+markers %>% top_n(n=10, wt=avg_log2FC)
+#CCN2, ACTC1, ACTA2, CALD1, TPM2, ACTB, TPM1, KRT17, GAS6, S100A6
+
+```
+
+
+## Unsupervised clusters (res=0.25)
+
+```{r}
+
+#Load data
+scrna <- paste0("./data/integrated/data.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".assign.rds")
+data <- readRDS(scrna)
+
+data@meta.data$Cluster0.25 <- factor(data@meta.data$Cluster0.25,
+                                     levels=c("MSC.c1",
+                                              "MSC.c2",
+                                              "MSC.c3",
+                                              "Chondrogenic.c1",
+                                              "Chondrogenic.c2"))
+
+```
+
+### Plots
+Make plots of cell classification findings.
+
+```{r}
+#umap
+DimPlot(data,
+        group.by="Cluster0.25",
+        reduction="umap",
+        cols=col_cluster) +
+  labs(x="UMAP1",y="UMAP2")
+DimPlot(data,
+        group.by="Cluster0.25",
+        split.by="Species",
+        reduction="umap",
+        cols=col_cluster) +
+  labs(x="UMAP1",y="UMAP2")
+#cell counts
+ggplot(data@meta.data, aes(x=Cluster0.25, fill=Cluster0.25)) +
+  geom_bar(position="dodge") +
+  labs(y="Number of Cells", x="") +
+  scale_fill_manual(name="", values=col_cluster) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+#umi counts
+ggplot(data@meta.data, aes(x=Cluster0.25, y=nCount_RNA, fill=Cluster0.25)) +
+  geom_violin(width=0.8) +
+  labs(y="UMIs per Cell", x="") +
+  scale_fill_manual(name="", values=col_cluster) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+#gene counts
+ggplot(data@meta.data, aes(x=Cluster0.25, y=nFeature_RNA, fill=Cluster0.25)) +
+  geom_violin(width=0.8) +
+  labs(y="Genes per Cell", x="") +
+  scale_fill_manual(name="", values=col_cluster) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+##collagen ii is filtered out???
+#which(sapply(data@assays$RNA@counts@Dimnames[[1]], stri_count_regex, pattern="COL")==1)
+#which(sapply(data@assays$integrated@data@Dimnames[[1]], stri_count_regex, pattern="COL")==1)
+#dotplot
+DotPlot(subset(data,subset=Species=="Human"),
+        features=c("ACAN","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="Cluster0.25", dot.scale=20,
+        cols=c("grey99","black"),
+        col.max=5)
+DotPlot(subset(data,subset=Species=="Chimp"),
+        features=c("ACAN","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="Cluster0.25", dot.scale=20,
+        cols=c("grey99","black"),
+        col.max=5)
+#violin plot
+VlnPlot(data,
+        features=c("ACAN","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="Cluster0.25",
+        cols=col_cluster,
+        pt.size=0)
+
+```
+
+## Chondro unsupervised clusters (res=0.65)
+
+```{r}
+
+#Load data
+scrna <- paste0("./data/integrated/data.filterC.log.chond-ind.int.",genes,".",dimred,".",kweigh,".",regout,".assign.rds")
+data <- readRDS(scrna)
+
+data@meta.data$ChondroCluster0.75 <- factor(data@meta.data$ChondroCluster0.75,
+                                     levels=c("Chondrogenic.c1",
+                                              "Chondrogenic.c2",
+                                              "Chondrogenic.c3",
+                                              "Chondrogenic.c4",
+                                              "not chondrogenic"))
+
+```
+
+### Plots
+Make plots of cell classification findings.
+
+```{r}
+#umap
+DimPlot(data,
+        group.by="ChondroCluster0.75",
+        reduction="umap",
+        cols=col_cluster2) +
+  labs(x="UMAP1",y="UMAP2")
+DimPlot(data,
+        group.by="ChondroCluster0.75",
+        split.by="Species",
+        reduction="umap",
+        cols=col_cluster2) +
+  labs(x="UMAP1",y="UMAP2")
+DimPlot(data,
+        group.by="ChondroCluster0.75",
+        split.by="ChondroCluster0.75",
+        reduction="umap",
+        cols=col_cluster2) +
+  labs(x="UMAP1",y="UMAP2")
+#cell counts
+ggplot(data@meta.data, aes(x=ChondroCluster0.75, fill=ChondroCluster0.75)) +
+  geom_bar(position="dodge") +
+  labs(y="Number of Cells", x="") +
+  scale_fill_manual(name="", values=col_cluster2) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+#umi counts
+ggplot(data@meta.data, aes(x=ChondroCluster0.75, y=nCount_RNA, fill=ChondroCluster0.75)) +
+  geom_violin(width=0.8) +
+  labs(y="UMIs per Cell", x="") +
+  scale_fill_manual(name="", values=col_cluster2) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+#gene counts
+ggplot(data@meta.data, aes(x=ChondroCluster0.75, y=nFeature_RNA, fill=ChondroCluster0.75)) +
+  geom_violin(width=0.8) +
+  labs(y="Genes per Cell", x="") +
+  scale_fill_manual(name="", values=col_cluster2) +
+  facet_grid(~Species)+
+  theme_classic() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=12),
+        legend.text=element_text(size=12),
+        strip.text.x=element_text(size=12))
+##collagen ii is filtered out???
+#which(sapply(data@assays$RNA@counts@Dimnames[[1]], stri_count_regex, pattern="COL")==1)
+#which(sapply(data@assays$integrated@data@Dimnames[[1]], stri_count_regex, pattern="COL")==1)
+#dotplot
+DotPlot(data,
+        features=c("ACAN","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="ChondroCluster0.75", dot.scale=20,
+        split.by="Species",
+        cols=c("grey99",cc.c4,"grey99",cc.c4),
+        #cols=c("grey99","black"),
+        col.max=5)
+DotPlot(subset(data,subset=Species=="Human"),
+        features=c("ACAN","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="ChondroCluster0.75", dot.scale=20,
+        cols=c("grey99",cc.c4),
+        #cols=c("grey99","black"),
+        col.max=5,
+        scale.min=0,
+        scale.max=100)
+DotPlot(subset(data,subset=Species=="Chimp"),
+        features=c("ACAN","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="ChondroCluster0.75", dot.scale=20,
+        cols=c("grey99",cc.c4),
+        #cols=c("grey99","black"),
+        col.max=5,
+        scale.min=0,
+        scale.max=100)
+#violin plot
+VlnPlot(data,
+        features=c("ACAN","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","SOX9","SOX6","SOX5","COL11A1"),
+        #features=c("ACAN","COL2A1","SOX9","SOX6","SOX5","COL11A1","MATN3","SPARC"),
+        group.by="ChondroCluster0.75",
+        cols=col_cluster2,
+        pt.size=0)
+
+```

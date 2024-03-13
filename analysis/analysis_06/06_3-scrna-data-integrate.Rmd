@@ -1,0 +1,853 @@
+---
+title: "scrna-data-integrate"
+author: "Genevieve Housman"
+date: "July 2023"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# scRNA-seq Analyses - Integrate Data
+
+..
+..
+..
+CHECK THIS TEXT
+..
+..
+..
+
+For each dataset (separate individuals but keep all cell types together - see 1-scrn-data-process.Rmd), normalization, variance stabilization, and regression of unwanted variation were performed. Following this, datasets were integrated using shared highly variable genes.
+
+**Step 1 - Normalization**
+
+In Seurat the main normalization methods are:
+
+1. Log Normalization
+    + Within a cell, gene counts are divided by the total counts, multiplied by a scale.factor (10000), and natural-log transformed using log1p.
+2. SCTransform
+    + Alternative workflow that perfoms log normalization, variable feature identification, and data scaling in one command.
+
+Because data are more difficult to manipulate with SCTransform, standard log normalization is used here.
+
+**Step 2 - Calculate Cell Cycle Score**
+
+Cell cycle scores are assigned to cells based on G2/M and S phase markers in each cell. The calculation depends on average gene expression levels across cells in a seurat object, so merging or subsetting data can affect these scores. Here, these scores are calculated within separate samples (n=42, each individual and cell type separated) rather than after different samples are merged together.
+
+Possible Cell Cycle Assignments
+
+* G1: beginning of interphase
+* S: synthesis phase
+* G2: end of interphase prior to mitosis
+
+**Step 3 - Variance Stabilization**
+
+Identifying variable genes depends on expression patterns across cells in a seurat object, so merging or subsetting data can affect which genes are identified as variable. Here, 
+
+**Step 4 - Regression of Unwanted Variation**
+
+Here, variation associated with related variables is not regressed out of the data subsets before integration.
+
+**Step 5 - Data Integration**
+
+In order to best call cell types across collections and species, data were integrated. Simple merging of datasets and even merging datasets using the intersect of the 6000 most variable genes in humans and chimpanzees (see scripts for previous trial runs below) retained unwanted variation. Thus, data were integrated to remove this unwanted variation and allow successful calling of cell types on biological variation of interest.
+
+Data were integrated using reciprocal PCA combined with reference-based integration. This method (while perhaps less accurate than CCA) is more computationally efficient than other datasets, which is necessary for the large number of cells considered here. In this method, reciprocal PCA is performed to identify an effective space in which to find anchors. Specifically, each dataset is projected into every other dataset's PCA space, and anchors are constrained by the same mutual neighborhood requirement. Because a subset of databases are assigned as references, each dataset is compared to the references instead of performing all pairwise comparisons. During integration, the identified anchors between datasets (which represent pairwise correspondences between individual cells) are then used to harmonize the datasets (transfer information from one dataset to another).
+
+***Additional Notes***
+
+Because subset, merged, and integrated data reductions were correlated with UMI counts and percent of mitochondrial reads, several methods of regressing out this unwanted variation were tested. Cell cycle phase was also correlated with data reductions, but this variation was not regressed out because this is not recommended for differentiating cells.
+
+* Option 1: regress out unwanted variation due to UMI counts and percent.mt while data are still in subsets
+  + unwanted variation does not stay regressed out following integration (do no use)
+* Option 2: regress out unwanted variation due to UMI counts and percent.mt during reciprocal PCA integration set up
+  + method does not work
+* Option 3: regress out unwanted variation due to UMI counts and percent.mt after data are integrated
+  + unwanted variation is successfully regressed out and data reduction appears different (should look into further)
+
+**References**
+
+* https://satijalab.org/seurat/v3.2/integration.html
+* https://hbctraining.github.io/scRNA-seq/lessons/06_SC_SCT_and_integration.html
+* https://hbctraining.github.io/scRNA-seq/lessons/cell_cycle_scoring.html
+* See the following scripts for previous trial runs:
+    + ./analysis/v1/v1-10x-data-normalize-log.Rmd
+    + ./analysis/v1/v1-10x-data-normalize-sct.Rmd
+    + ./analysis/v2/v2-10x-data-3-integrate.Rmd
+
+```{r, eval=FALSE}
+
+#Load libraries
+library(Seurat)
+library(dplyr)
+library(stringi)
+library(stringr)
+library(ggplot2)
+library(colorspace)
+library(RColorBrewer)
+library(tidyr)
+library(gridExtra)
+library(grid)
+#library(raster)
+
+```
+
+## Load and Prepare Data
+
+Prepare filtered 10X data by separating each individual and cell type into seperate datasets.
+
+```{r, eval=FALSE}
+
+#Load batch info
+batch <- c("batch1","batch2")
+#batch <- read.csv(file='./data/scrna-batch.csv', header=TRUE, sep=",")
+cmo <- c("CMO301","CMO302","CMO303","CMO304","CMO305","CMO306","CMO307","CMO308","CMO309","CMO310","CMO311","CMO312")
+
+#Define filter type
+#filter <- ""
+#filter <- ".filterL"
+filter <- ".filterC"
+
+#Read in files
+data <- readRDS(paste0("./data/06_data",filter,".rds"))
+
+#Load cell cycle markers (Tirosh et al., 2016 Science) with seurat
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+#Separate stages of differentiation and species within collections into separate objects
+i <- 1
+objects <- list()
+idx <- 1
+while (i <= length(batch)) {
+  
+  print(batch[i])
+  
+  j <- 1
+  
+  if (batch[i]=="batch1") {cmo_sub <- cmo}
+  if (batch[i]=="batch2") {cmo_sub <- cmo[1:6]}
+
+  while (j <= length(cmo_sub)) {
+    
+    print(cmo_sub[j])
+  
+    tmp <- subset(data[[i]], subset=ComboRef_0.6==cmo_sub[j])
+    obj <- subset(tmp, subset=Species=='Human')
+    objects[[idx]] <- CreateSeuratObject(obj@assays$RNA@counts, meta.data=obj@meta.data)
+    idx <- idx+1
+    obj <- subset(tmp, subset=Species=='Chimp')
+    objects[[idx]] <- CreateSeuratObject(obj@assays$RNA@counts, meta.data=obj@meta.data)
+    idx <- idx+1
+    
+    j <- j+1
+  
+  }
+  
+  i <- i+1
+  
+}
+
+rm(data,tmp,obj,idx)
+
+```
+
+## Normalize Data and Score Cell Cycle
+
+Because cell cycle score depends on average gene expression levels across cells in a seurat object, it is probably best to calculate these scores within separate samples (n=42, each individual and cell type separated) rather than after different samples are merged together.
+
+```{r, eval=FALSE}
+
+#Perform log normalization and cell cycle scoring on each individual and cell type
+#note: MLF1IP, FAM64A, and HN1 not in dataset
+for (i in 1:length(objects)) {
+  print(i)
+  objects[[i]] <- NormalizeData(objects[[i]], normalization.method="LogNormalize", scale.factor=10000, verbose=FALSE)
+  objects[[i]] <- CellCycleScoring(objects[[i]], s.features=s.genes, g2m.features=g2m.genes, set.ident=FALSE)
+}
+rm(s.genes,g2m.genes,i)
+
+```
+
+## Merge Data into Different Subsets
+
+Datasets include:
+
+* cells separated by individual and stage of differentiation (n=34)
+* total cells separated by individual (n=8)
+* chondrogenic differentiation cells separated by individual (n=8)
+* mesensphere differentiation cells separated by individual (n=8)
+* all cells from Time 0 collections (n=1)
+* all cells from Time 1 collections (n=1)
+* all cells from Time 2 collections (n=1)
+* all cells from all collections (n=1)
+
+```{r, eval=FALSE}
+
+#keep collections separated by individual and cell type (.log.ind-stg)
+#objects
+saveRDS(objects[1:36], file=paste0("./data/06_data",filter,".log.total-ind-stg.rds"))
+
+#merge all stages of differentiation from each individual (.log.total.ind)
+objects[[37]] <- merge(objects[[1]], y=c(objects[[3]],objects[[5]],objects[[7]],objects[[9]],objects[[11]]),
+                       add.cell.ids=c("H1-d00","H1-d0","H1-d7-m","H1-d14-m","H1-d7-c","H1-d14-c"))
+objects[[38]] <- merge(objects[[2]], y=c(objects[[4]],objects[[6]],objects[[8]],objects[[10]],objects[[12]]),
+                       add.cell.ids=c("C1-d00","C1-d0","C1-d7-m","C1-d14-m","C1-d7-c","C1-d14-c"))
+objects[[39]] <- merge(objects[[13]], y=c(objects[[15]],objects[[17]],objects[[19]],objects[[21]],objects[[23]]),
+                       add.cell.ids=c("H2-d00","H2-d0","H2-d7-m","H2-d14-m","H2-d7-c","H2-d14-c"))
+objects[[40]] <- merge(objects[[14]], y=c(objects[[16]],objects[[18]],objects[[20]],objects[[22]],objects[[24]]),
+                       add.cell.ids=c("C4-d00","C4-d0","C4-d7-m","C4-d14-m","C4-d7-c","C4-d14-c"))
+objects[[41]] <- merge(objects[[25]], y=c(objects[[27]],objects[[29]]),
+                       add.cell.ids=c("H5-d0","H5-d7-c","H5-d14-c"))
+objects[[42]] <- merge(objects[[26]], y=c(objects[[28]],objects[[30]]),
+                       add.cell.ids=c("C5-d0","C5-d7-c","C5-d14-c"))
+objects[[43]] <- merge(objects[[31]], y=c(objects[[33]],objects[[35]]),
+                       add.cell.ids=c("H3-d0","H3-d7-c","H3-d14-c"))
+objects[[44]] <- merge(objects[[32]], y=c(objects[[34]],objects[[36]]),
+                       add.cell.ids=c("C2-d0","C2-d7-c","C2-d14-c"))
+saveRDS(objects[37:44], file=paste0("./data/06_data",filter,".log.total-ind.rds"))
+
+#merge all chondrogenic stages of differentiation from each individual (.log.chond.ind)
+objects[[45]] <- merge(objects[[1]], y=c(objects[[3]],objects[[9]],objects[[11]]),
+                       add.cell.ids=c("H1-d00","H1-d0","H1-d7-c","H1-d14-c"))
+objects[[46]] <- merge(objects[[2]], y=c(objects[[4]],objects[[10]],objects[[12]]),
+                       add.cell.ids=c("C1-d00","C1-d0","C1-d7-c","C1-d14-c"))
+objects[[47]] <- merge(objects[[13]], y=c(objects[[15]],objects[[21]],objects[[23]]),
+                       add.cell.ids=c("H2-d00","H2-d0","H2-d7-c","H2-d14-c"))
+objects[[48]] <- merge(objects[[14]], y=c(objects[[16]],objects[[22]],objects[[24]]),
+                       add.cell.ids=c("C4-d00","C4-d0","C4-d7-c","C4-d14-c"))
+objects[[49]] <- merge(objects[[25]], y=c(objects[[27]],objects[[29]]),
+                       add.cell.ids=c("H5-d0","H5-d7-c","H5-d14-c"))
+objects[[50]] <- merge(objects[[26]], y=c(objects[[28]],objects[[30]]),
+                       add.cell.ids=c("C5-d0","C5-d7-c","C5-d14-c"))
+objects[[51]] <- merge(objects[[31]], y=c(objects[[33]],objects[[35]]),
+                       add.cell.ids=c("H3-d0","H3-d7-c","H3-d14-c"))
+objects[[52]] <- merge(objects[[32]], y=c(objects[[34]],objects[[36]]),
+                       add.cell.ids=c("C2-d0","C2-d7-c","C2-d14-c"))
+saveRDS(objects[45:52], file=paste0("./data/06_data",filter,".log.chond-ind.rds"))
+
+#merge all mesensphere stages of differentiation from each individual (.log.mesen.ind)
+objects[[53]] <- merge(objects[[1]], y=c(objects[[3]],objects[[5]],objects[[7]]),
+                       add.cell.ids=c("H1-d00","H1-d0","H1-d7-m","H1-d14-m"))
+objects[[54]] <- merge(objects[[2]], y=c(objects[[4]],objects[[6]],objects[[8]]),
+                       add.cell.ids=c("C1-d00","C1-d0","C1-d7-m","C1-d14-m"))
+objects[[55]] <- merge(objects[[13]], y=c(objects[[15]],objects[[17]],objects[[19]]),
+                       add.cell.ids=c("H2-d00","H2-d0","H2-d7-m","H2-d14-m"))
+objects[[56]] <- merge(objects[[14]], y=c(objects[[16]],objects[[18]],objects[[20]]),
+                       add.cell.ids=c("C4-d00","C4-d0","C4-d7-m","C4-d14-m"))
+saveRDS(objects[53:56], file=paste0("./data/06_data",filter,".log.mesen-ind.rds"))
+
+#merge all collections (.log.tot)
+objects[[57]] <- merge(objects[[1]],
+                        y=c(objects[[3]],objects[[5]],objects[[7]],objects[[9]],objects[[11]],
+                            objects[[2]],objects[[4]],objects[[6]],objects[[8]],objects[[10]],objects[[12]],
+                            objects[[13]],objects[[15]],objects[[17]],objects[[19]],objects[[21]],objects[[23]],
+                            objects[[14]],objects[[16]],objects[[18]],objects[[20]],objects[[22]],objects[[24]],
+                            objects[[25]],objects[[27]],objects[[29]],
+                            objects[[26]],objects[[28]],objects[[30]],
+                            objects[[31]],objects[[33]],objects[[35]],
+                            objects[[32]],objects[[34]],objects[[36]]),
+                        add.cell.ids=c("H1-d00","H1-d0","H1-d7-m","H1-d14-m","H1-d7-c","H1-d14-c",
+                                       "C1-d00","C1-d0","C1-d7-m","C1-d14-m","C1-d7-c","C1-d14-c",
+                                       "H2-d00","H2-d0","H2-d7-m","H2-d14-m","H2-d7-c","H2-d14-c",
+                                       "C4-d00","C4-d0","C4-d7-m","C4-d14-m","C4-d7-c","C4-d14-c",
+                                       "H5-d0","H5-d7-c","H5-d14-c",
+                                       "C5-d0","C5-d7-c","C5-d14-c",
+                                       "H3-d0","H3-d7-c","H3-d14-c",
+                                       "C2-d0","C2-d7-c","C2-d14-c"))
+saveRDS(objects[57], file=paste0("./data/06_data",filter,".log.total.rds"))
+
+```
+
+## Find Variable Features, Stabilize Variance, and Reduce Data Dimensionality
+
+Which variable features are identified depends on which samples are included in the seurat object. This is why different sets of merged data are first compiled before then assessing variable feature in the merged dataset.
+
+When scaling the data, no variables are regressed out at this time.
+
+To QC each data subset, dimensional reduction is also performed.
+
+```{r, eval=FALSE}
+
+#Identify variable feature for each individual and cell type
+
+i <- 1
+while (i <= length(objects)) {
+  print(i)
+  objects[[i]] <- FindVariableFeatures(objects[[i]], selection.method="vst", nfeatures=2000, verbose=FALSE)
+  objects[[i]] <- ScaleData(objects[[i]], vars.to.regress=NULL, verbose=FALSE)
+  objects[[i]] <- RunPCA(objects[[i]], npcs=20, verbose=FALSE)
+  #keep all dims that explain more than 0.1% of variance
+  pva <- objects[[i]]@reductions$pca@stdev^2/objects[[i]]@reductions$pca@misc$total.variance
+  ndim <- length(which(pva>=0.001))
+  objects[[i]] <- RunUMAP(objects[[i]], dims=1:ndim)
+  i <- i+1
+}
+rm(pva,ndim,i)
+
+```
+
+### Save Data Subsets
+
+```{r, eval=FALSE}
+
+#Save data
+saveRDS(objects[1:36], file=paste0("./data/06_data",filter,".log.ind-stg.rds"))
+saveRDS(objects[37:44], file=paste0("./data/06_data",filter,".log.total-ind.rds"))
+saveRDS(objects[45:52], file=paste0("./data/06_data",filter,".log.chond-ind.rds"))
+saveRDS(objects[53:56], file=paste0("./data/06_data",filter,".log.mesen-ind.rds"))
+saveRDS(objects[57], file=paste0("./data/06_data",filter,".log.total.rds"))
+rm(batch, objects)
+rm(cmo,cmo_sub)
+rm(i,j,pva)
+
+```
+
+## QC of Data Subsets
+
+All subsets show variation correlated with UMI counts per cell (nCount_RNA), gene counts per cell (nFeature_RNA), percent of mitochondrial reads (percent.mt), and cell cycle phase (Phase, S.Score, G2M.Score). For subsets containing three collections (Time 0, Time 1, Time 2) for one cell line, batch effects associated with collection are also correlated with expression variation (Collection, Stage, Sample, PrewashViability, PostwashViability, PostmixViability, CD90, CD73, CD105, CD45.CD34.CD11b.CD19.HLA.DR, Alizarin, OilRed). This is true across all cell filtering schemes (no filtering, lenient filtering, and conservative filtering).
+
+```{r, eval=FALSE}
+
+#Define function for making heatmap of data reductions vs. batch correlations
+batchPlot <- function(data,text,batch) {
+  
+  df <- data@meta.data[,which(colnames(data@meta.data) %in% batch)]
+  df <- cbind(df,data@reductions$pca@cell.embeddings[,1:10])
+  df <- df[,colSums(is.na(df))<nrow(df)]
+  
+  y <- dim(df)[2]
+  x <- y-10
+  
+  #Make correlation matrix
+  cov.cor <- matrix(ncol=10, nrow=x, dimnames=list(colnames(df)[1:x], colnames(df)[(x+1):y]))
+  
+  j=1
+  while (j <= 10) { 
+    k=1
+    while (k <= x) { 
+      if (length(unique(df[,0+k]))>1) {
+        lm_result <- lm(df[,x+j] ~ df[,0+k]) 
+        r2 <- summary(lm_result)$r.squared 
+        cov.cor[k, j] <- r2 
+      }
+      if (length(unique(df[,0+k]))==1) {
+        cov.cor[k, j] <- NA
+      }
+      k=k+1
+    }
+    j=j+1
+  }
+  
+  #Convert to long format to plot in ggplot2
+  cov.cor.df <- as.data.frame(cov.cor) 
+  cov.cor.df$batch <- rownames(cov.cor.df) 
+  cov.cor.df <- gather(cov.cor.df, key="reduction", value="cor", -batch) 
+  head(cov.cor.df) 
+  
+  #Plot heatmap
+  cov.cor.df$batch <- factor(cov.cor.df$batch, 
+                             levels = unique(cov.cor.df$batch), 
+                             labels = unique(cov.cor.df$batch))
+  
+  cov.cor.df$reduction <- factor(cov.cor.df$reduction, 
+                                 levels = unique(cov.cor.df$reduction),
+                                 labels = unique(cov.cor.df$reduction)) 
+  
+  title <- paste0("Correlation between data reductions and batch effects\n",text)
+  
+  return(print(ggplot(cov.cor.df, aes(x=reduction, y=batch, fill=cor)) +
+                 geom_tile(color="white") +
+                 scale_fill_gradient(low="white", high="darkgrey", limits=c(0, 1)) + 
+                 labs(title=title, x="", y="") +
+                 theme(axis.text.x=element_text(angle=90, hjust=1))))
+  
+}
+
+```
+
+```{r, eval=FALSE}
+
+#Define function for making plots and output files
+qcPlots <-function(data,text,batch) {
+  
+  batch.factor <- c("Stage","Species","Collection","Pair","Individual","Sample","Sex","Age","Phase")
+  batch.number <- c("nCount_RNA","nFeature_RNA","percent.mt","S.Score","G2M.Score")
+  
+  plotList <- list()
+  
+  i=1
+  while (i <= length(batch)) {
+    
+    if (sum(is.na(data@meta.data[,batch[[i]]]))<nrow(data@meta.data)) {
+      if (batch[[i]] %in% batch.factor) {
+        plotList[[i]] <- CombinePlots(plots=list((DimPlot(data, group.by=batch[[i]], reduction="umap") + labs(x="UMAP1",y="UMAP2")),
+                                                 (DimPlot(data, group.by=batch[[i]], reduction="pca", dims=c(1,2)) + labs(x="PC1",y="PC2")),
+                                                 (DimPlot(data, group.by=batch[[i]], reduction="pca", dims=c(3,4)) + labs(x="PC3",y="PC4")),
+                                                 (DimPlot(data, group.by=batch[[i]], reduction="pca", dims=c(5,6)) + labs(x="PC5",y="PC6")),
+                                                 (DimPlot(data, group.by=batch[[i]], reduction="pca", dims=c(7,8)) + labs(x="PC7",y="PC8")),
+                                                 (DimPlot(data, group.by=batch[[i]], reduction="pca", dims=c(9,10)) + labs(x="PC9",y="PC10"))), ncol=6)
+      }
+      if (batch[[i]] %in% batch.number) {
+        plotList[[i]] <- CombinePlots(plots=list((FeaturePlot(data, features=batch[[i]], reduction="umap") + labs(x="UMAP1",y="UMAP2")),
+                                                 (FeaturePlot(data, features=batch[[i]], reduction="pca", dims=c(1,2)) + labs(x="PC1",y="PC2")),
+                                                 (FeaturePlot(data, features=batch[[i]], reduction="pca", dims=c(3,4)) + labs(x="PC3",y="PC4")),
+                                                 (FeaturePlot(data, features=batch[[i]], reduction="pca", dims=c(5,6)) + labs(x="PC5",y="PC6")),
+                                                 (FeaturePlot(data, features=batch[[i]], reduction="pca", dims=c(7,8)) + labs(x="PC7",y="PC8")),
+                                                 (FeaturePlot(data, features=batch[[i]], reduction="pca", dims=c(9,10)) + labs(x="PC9",y="PC10"))), ncol=6)
+      }
+    }
+    
+    else {
+      plotList[[i]] <- grid.rect(gp=gpar(col="white"))
+    }
+      
+    i=i+1
+
+  }
+  
+  return(print(grid.arrange(grobs=plotList, ncol=1, top=textGrob(text,gp=gpar(fontsize=20)))))
+  
+}
+
+```
+
+```{r, eval=FALSE}
+
+#Load information of data to be examined
+
+obj.set1 <- readRDS(paste0("./data/06_data",filter,".log.total-ind.rds"))
+obj.set2 <- readRDS(paste0("./data/06_data",filter,".log.chond-ind.rds"))
+obj.set3 <- readRDS(paste0("./data/06_data",filter,".log.mesen-ind.rds"))
+objects <- append(obj.set1,obj.set2)
+objects <- append(objects,obj.set3)
+rm(obj.set1,obj.set2,obj.set3)
+
+batch <- c("Stage","Species","Collection","Pair","Individual","Sample","Sex","Age","nCount_RNA","nFeature_RNA","percent.mt","S.Score","G2M.Score","Phase")
+
+#Calculate and plot correlation of batch with first 10 PCs and UMAP
+pdf(file=paste0("./output/06_data-qc-post",str_remove(filter,"."),"-subsets-batchcor.pdf"), onefile=TRUE, width=7, height=7)
+i=1
+for (i in 1:length(objects)) {
+  print(i)
+  text <- paste0("subset ",i)
+  data <- objects[[i]]
+  batchPlot(data,text,batch)
+  i=i+1
+}
+dev.off()
+
+#Visualize batch effects in PC and UMAP space
+pdf(file=paste0("./output/06_data-qc-post",str_remove(filter,"."),"-subsets-batchviz.pdf"), onefile=TRUE, width=36, height=81)
+i=1
+for (i in 1:length(objects)) {
+  text <- paste0("subset ",i)
+  data <- objects[[i]]
+  print(text)
+  qcPlots(data,text,batch)
+  i=i+1
+}
+dev.off()
+
+rm(data,batch,text,i)
+
+```
+
+### Data Integration
+
+Datasets used:
+
+* separate individuals but keep all stages of differentiation together
+    + integrated all cells
+    + integrated all chondrogenic cells
+    + integrated all mesensphere cells
+
+Cells were integrated using different numbers of genes:
+
+* features that are repeatedly variable across datasets for integration (intVar)
+    + total: 
+    + chond:  2000 genes
+    + mesen:
+* all genes that have at least 1 UMI count across samples used as integration anchors (intNo0)
+    + total: 
+    + chond: 17533 genes
+    + mesen:
+* all 19377 genes used as integration anchors  (int19k)
+
+Following integration, scale data involved either:
+
+* no variables regressed out during scale data (intNo0, int19k)
+* nCount_RNA and percent.mt regressed out during scale data following integration (intNo0.reg, int19k.reg)
+
+Steps for each integration:
+
+* Define list subset
+* Select features for downstream integration
+* Identify anchors (used references + RPCA reduction method) [note: all other integration methods crash]
+* Integrate datasets
+* Reduce dimensionality
+* Save data
+
+```{bash, eval=FALSE}
+cd /project2/gilad/ghousman/chondro-human-chimp/hc-chondro-time/chondro-time-evo
+sinteractive --partition=caslake --account=pi-gilad --time=36:00:00 --mem-per-cpu=128G
+module load R/4.2.0
+R
+```
+
+```{r, eval=FALSE}
+
+#Load libraries
+library(Seurat)
+library(dplyr)
+library(stringi)
+library(stringr)
+library(ggplot2)
+library(colorspace)
+library(RColorBrewer)
+library(tidyr)
+library(gridExtra)
+library(grid)
+
+```
+
+..
+..
+..
+CHECK ABOUT REDUCING K.WEIGHT (https://github.com/satijalab/seurat/issues/3930)
+REDO WITH SCALING OF DATA
+..
+..
+..
+
+```{r, eval=FALSE}
+
+#Integrate cells (across individuals)
+
+#define filter type
+#filter <- ""
+#filter <- ".filterL"
+filter <- ".filterC"
+
+#define set of cells to integrate
+#set <- "total-ind"  #all cells
+set <- "chond-ind"  #all chondrogenic cells
+#set <- "mesen-ind"  #all mesensphere cells
+
+#load data
+print(paste0("./data/06_data",filter,".log.",set,".rds"))
+obj <- readRDS(paste0("./data/06_data",filter,".log.",set,".rds"))
+
+#parameters for integration
+#genes <- "Var"  #features that are repeatedly variable across datasets for integration
+genes <- "No0"  #all genes that have at least 1 UMI count across samples
+#genes <- "19k"  #all 19397 genes
+dimred <- "cca"
+#dimred <- "pca"
+#dimred <- "ref"
+kweigh <- 50
+#kweigh <- 100
+regout <- "reg" #this takes a long time when genes=No0
+#regout <- "non"
+
+#select genes to use for finding integration anchors
+if (genes=="Var") {
+  obj.features <- SelectIntegrationFeatures(object.list = obj)
+  length(obj.features) 
+}
+if (genes=="No0") {
+  geneList <- c()
+  for(object in obj) {
+    geneList <- c(geneList,rownames(object@assays$RNA@counts)[rowSums(object@assays$RNA@counts)!=0])
+  }
+  obj.features <- unique(geneList)
+  length(obj.features)
+}
+if (genes=="19k") {
+  obj.features <- rownames(obj[[1]]@assays$RNA@counts)
+  length(obj.features)
+}
+
+#scale data and run pca
+obj <- lapply(X=obj, FUN=function(x) {
+  x <- ScaleData(x, features=obj.features, verbose=FALSE)
+  x <- RunPCA(x, features=obj.features, verbose=FALSE)
+})
+
+#find integration anchors
+if (dimred=="cca") {
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reduction="cca")
+}
+if (dimred=="pca") {
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reduction="rpca")
+}
+if (dimred=="ref") {
+  ref.data <- c(2,9) #H1-r2 and C1-r2 differentiated best
+  obj.anchors <- FindIntegrationAnchors(object.list=obj,
+                                        normalization.method="LogNormalize",
+                                        anchor.features=obj.features,
+                                        reference=ref.data,
+                                        reduction="rpca")
+}
+
+#integrate data
+integrate <- IntegrateData(anchorset=obj.anchors,
+                           normalization.method="LogNormalize",
+                           k.weight=kweigh)
+
+#regress out unwanted variables
+if (regout=="reg") {
+  integrate <- ScaleData(integrate, vars.to.regress=c("nCount_RNA","percent.mt"))
+}
+if (regout=="non") {
+  integrate <- ScaleData(integrate, vars.to.regress=NULL, verbose=FALSE)
+}
+
+#run pca
+integrate <- RunPCA(object=integrate,
+                    npcs=100,
+                    verbose=FALSE)
+
+#keep all dims that explaim more than 0.1% of variance
+pva <- integrate@reductions$pca@stdev^2/integrate@reductions$pca@misc$total.variance
+ndim <- length(which(pva>=0.001))
+print(ndim)
+
+#run umap
+integrate <- RunUMAP(integrate,
+                     dims=1:ndim)
+
+#save data
+print(paste0("./data/integrated/06_data",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+saveRDS(integrate, file=paste0("./data/integrated/06_data",filter,".log.",set,".int.",genes,".",dimred,".",kweigh,".",regout,".rds"))
+
+#clear variables
+rm(genes,dimred,kweigh,regout)
+rm(obj,obj.features,obj.anchors,integrate,pva,ndim)
+
+```
+
+## QC of Merged and Integrated Data
+
+..
+..
+..
+UPDATE TEXT
+..
+..
+..
+
+Results of correlations between expression data reductions and batch effects:
+
+* Merged Data
+    + variation correlated with UMI counts per cell (nCount_RNA), gene counts per cell (nFeature_RNA), and percent of mitochondrial reads (percent.mt)
+    + variation correlated with collection-associated batch effects (Sample, Individual, Pair, Age, CD90)
+    + variation correlated with species
+    + variation not correlated with cell cycle phase (Phase, S.Score, G2M.Score)
+* Integrated Data (non-zero genes)
+    + variation correlated with UMI counts per cell (nCount_RNA), gene counts per cell (nFeature_RNA), percent of mitochondrial reads (percent.mt), and cell cycle phase (Phase, S.Score, G2M.Score)
+    + variation not correlated with collection-associated batch effects (Sample, Individual, Pair, Age, CD90)
+    + variation not correlated with species
+* Integrated Data (non-zero genes, with nCount_RNA and percent.mt regressed out during data scaling following integration)
+    + variation correlated with cell cycle phase (Phase, S.Score, G2M.Score)
+    + variation not correlated with collection-associated batch effects (Sample, Individual, Pair, Age, CD90)
+    + variation not correlated with species, UMI counts per cell (nCount_RNA), gene counts per cell (nFeature_RNA), percent of mitochondrial reads (percent.mt)
+* Integrated Data (19k genes)
+    + variation correlated with UMI counts per cell (nCount_RNA), gene counts per cell (nFeature_RNA), percent of mitochondrial reads (percent.mt), and cell cycle phase (Phase, S.Score, G2M.Score)
+    + variation not correlated with collection-associated batch effects (Sample, Individual, Pair, Age, CD90)
+    + variation not correlated with species
+* Integrated Data (19k genes, with nCount_RNA and percent.mt regressed out during data scaling following integration)
+    + variation correlated with cell cycle phase (Phase, S.Score, G2M.Score)
+    + variation not correlated with collection-associated batch effects (Sample, Individual, Pair, Age, CD90)
+    + variation not correlated with species, UMI counts per cell (nCount_RNA), gene counts per cell (nFeature_RNA), percent of mitochondrial reads (percent.mt)
+
+Conservative and lenient filters produce similar results.
+
+```{r, eval=FALSE}
+
+#Define function for making heatmap of data reductions vs. batch correlations
+batchPlot <- function(data,text,batch) {
+  
+  df <- data@meta.data[,which(colnames(data@meta.data) %in% batch)]
+  df <- cbind(df,data@reductions$pca@cell.embeddings[,1:10])
+  df <- cbind(df,data@reductions$umap@cell.embeddings[,1:2])
+  df <- df[,colSums(is.na(df))<nrow(df)]
+  
+  y <- dim(df)[2]
+  x <- y-12
+  
+  #Make correlation matrix
+  cov.cor <- matrix(ncol=12, nrow=x, dimnames=list(colnames(df)[1:x], colnames(df)[(x+1):y]))
+  
+  j=1
+  while (j <= 12) { 
+    k=1
+    while (k <= x) { 
+      if (length(unique(df[,0+k]))>1) {
+        lm_result <- lm(df[,x+j] ~ df[,0+k]) 
+        r2 <- summary(lm_result)$r.squared 
+        cov.cor[k, j] <- r2 
+      }
+      if (length(unique(df[,0+k]))==1) {
+        cov.cor[k, j] <- NA
+      }
+      k=k+1
+    }
+    j=j+1
+  }
+  
+  #Convert to long format to plot in ggplot2
+  cov.cor.df <- as.data.frame(cov.cor) 
+  cov.cor.df$batch <- rownames(cov.cor.df) 
+  cov.cor.df <- gather(cov.cor.df, key="reduction", value="cor", -batch) 
+  head(cov.cor.df) 
+  
+  #Plot heatmap
+  cov.cor.df$batch <- factor(cov.cor.df$batch, 
+                             levels = unique(cov.cor.df$batch), 
+                             labels = unique(cov.cor.df$batch))
+  
+  cov.cor.df$reduction <- factor(cov.cor.df$reduction, 
+                                 levels = unique(cov.cor.df$reduction),
+                                 labels = unique(cov.cor.df$reduction)) 
+  
+  title <- paste0("Correlation between data reductions and batch effects\n",text)
+  
+  return(print(ggplot(cov.cor.df, aes(x=reduction, y=batch, fill=cor)) +
+                 geom_tile(color="white") +
+                 scale_fill_gradient(low="white", high="darkgrey", limits=c(0, 1)) + 
+                 labs(title=title, x="", y="") +
+                 theme(axis.text.x=element_text(angle=90, hjust=1))))
+  
+}
+
+```
+
+```{r, eval=FALSE}
+
+#Define function for making plots and output files
+qcPlots <-function(data,text,batch) {
+  
+  batch.factor <- c("Stage","Species","Collection","Pair","Individual","Sample","Sex","Age","Phase")
+  batch.number <- c("nCount_RNA","nFeature_RNA","percent.mt","S.Score","G2M.Score")
+  
+  plotList <- list()
+  
+  i=1
+  while (i <= length(batch)) {
+    
+    if (sum(is.na(data@meta.data[,batch[[i]]]))<nrow(data@meta.data)) {
+      if (batch[[i]] %in% batch.factor) {
+        plotList[[i]] <- CombinePlots(plots=list((DimPlot(data, group.by=batch[[i]], reduction="umap") + labs(x="UMAP1",y="UMAP2")),
+                                                 (DimPlot(data, group.by=batch[[i]], reduction="pca", dims=c(1,2)) + labs(x="PC1",y="PC2")),
+                                                 (DimPlot(data, group.by=batch[[i]], reduction="pca", dims=c(3,4)) + labs(x="PC3",y="PC4")),
+                                                 (DimPlot(data, group.by=batch[[i]], reduction="pca", dims=c(5,6)) + labs(x="PC5",y="PC6")),
+                                                 (DimPlot(data, group.by=batch[[i]], reduction="pca", dims=c(7,8)) + labs(x="PC7",y="PC8")),
+                                                 (DimPlot(data, group.by=batch[[i]], reduction="pca", dims=c(9,10)) + labs(x="PC9",y="PC10"))), ncol=6)
+      }
+      if (batch[[i]] %in% batch.number) {
+        plotList[[i]] <- CombinePlots(plots=list((FeaturePlot(data, features=batch[[i]], reduction="umap") + labs(x="UMAP1",y="UMAP2")),
+                                                 (FeaturePlot(data, features=batch[[i]], reduction="pca", dims=c(1,2)) + labs(x="PC1",y="PC2")),
+                                                 (FeaturePlot(data, features=batch[[i]], reduction="pca", dims=c(3,4)) + labs(x="PC3",y="PC4")),
+                                                 (FeaturePlot(data, features=batch[[i]], reduction="pca", dims=c(5,6)) + labs(x="PC5",y="PC6")),
+                                                 (FeaturePlot(data, features=batch[[i]], reduction="pca", dims=c(7,8)) + labs(x="PC7",y="PC8")),
+                                                 (FeaturePlot(data, features=batch[[i]], reduction="pca", dims=c(9,10)) + labs(x="PC9",y="PC10"))), ncol=6)
+      }
+    }
+    
+    else {
+      plotList[[i]] <- grid.rect(gp=gpar(col="white"))
+    }
+      
+    i=i+1
+
+  }
+  
+  return(print(grid.arrange(grobs=plotList, ncol=1, top=textGrob(text,gp=gpar(fontsize=20)))))
+  
+}
+
+```
+
+..
+..
+..
+ADD ADDITIONAL INTEGRATION METHODS
+..
+..
+..
+
+```{r, eval=FALSE}
+
+#define filter type
+#filter <- ""
+#filter <- ".filterL"
+filter <- ".filterC"
+
+#define set of cells to integrate
+set <- "total-ind" #all cells
+#set <- "chond-ind" #all chondrogenic cells
+#set <- "mesen-ind" #all mesensphere cells
+
+
+#Load information of integrated data to be examined
+
+#(features repeatedly variable across datasets for integration)
+#(features repeatedly variable across datasets for integration, with nCount_RNA and percent.mt regressed out during data scaling following integration)
+#(non-zero genes)
+#(non-zero genes, with nCount_RNA and percent.mt regressed out during data scaling following integration)
+#(19k genes)
+#(19k genes, with nCount_RNA and percent.mt regressed out during data scaling following integration)
+
+obj.info <- list(c("int.Var.cca.50.non",paste0("./data/integrated/06_data",filter,".log.",set,".int.Var.cca.50.non.rds")),
+                 c("int.Var.cca.50.reg",paste0("./data/integrated/06_data",filter,".log.",set,".int.Var.cca.50.reg.rds")),
+                 c("int.No0.cca.50.non",paste0("./data/integrated/06_data",filter,".log.",set,".int.No0.cca.50.non.rds")),
+                 c("int.No0.cca.50.reg",paste0("./data/integrated/06_data",filter,".log.",set,".int.No0.cca.50.reg.rds")),
+                 c("int.19k.cca.50.non",paste0("./data/integrated/06_data",filter,".log.",set,".int.19k.cca.50.non.rds")))
+#c("int.19k.cca.50.reg",paste0("./data/integrated/06_data",filter,".log.",set,".int.19k.cca.50.reg.rds"))
+
+batch <- c("Stage","Species","Collection","Pair","Individual","Sample","Sex","Age","nCount_RNA","nFeature_RNA","percent.mt","S.Score","G2M.Score","Phase")
+
+#Calculate and plot correlation of batch with first 10 PCs and UMAP
+pdf(file=paste0("./output/06_data-qc-post",str_remove(filter,"."),"-subsets-",set,"-batchcor.pdf"), onefile=TRUE, width=7, height=7)
+i=1
+for (i in 1:length(obj.info)) {
+  print(i)
+  text <- obj.info[[i]][1]
+  data <- readRDS(obj.info[[i]][2])
+  batchPlot(data,text,batch)
+  i=i+1
+}
+dev.off()
+
+#Visualize batch effects in PC and UMAP space
+pdf(file=paste0("./output/06_data-qc-post",str_remove(filter,"."),"-subsets-",set,"-batchviz.pdf"), onefile=TRUE, width=42, height=48)
+i=1
+for (i in 1:length(obj.info)) {
+  text <- obj.info[[i]][1]
+  data <- readRDS(obj.info[[i]][2])
+  print(text)
+  qcPlots(data,text,batch)
+  i=i+1
+}
+dev.off()
+
+```
+
+Decided to move forward with (also need to look into it some more):
+
+* conservative filter with data integrated across genes repeatedly variable across datasets and with nCount_RNA and percent.mt regressed out during data scaling following integration (data.filterC.log.chond-ind.int.Var.caa.50.reg.rds)
+
+The following dataset is also good, but humans and chimps are not as well integrated on the UMAP
+
+* conservative filter with data integrated across all genes with non-zero UMI counts and with nCount_RNA and percent.mt regressed out during data scaling following integration (data.filterC.log.chond-ind.int.No0.caa.50.reg.rds)
